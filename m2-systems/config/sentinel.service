@@ -1,0 +1,16 @@
+[Unit]
+Description=BlackBox Sentinel Network Monitor
+After=network.target
+
+[Service]
+Type=simple
+User=sentinel
+WorkingDirectory=/opt/blackbox-sentinel/m2-systems
+ExecStart=/opt/blackbox-sentinel/m2-systems/venv/bin/python src/capture.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
