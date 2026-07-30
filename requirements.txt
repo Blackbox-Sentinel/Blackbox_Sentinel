@@ -1,0 +1,3 @@
+# Phase 0 skeleton has no external dependencies yet.
+# Run `pip freeze > requirements.txt` after installing real packages
+# in later phases (e.g. scikit-learn, pyserial, RPi.GPIO).
