@@ -44,8 +44,10 @@ scratch_gui_keys/
 .coverage
 htmlcov/
 
-# Logs
+# Logs & Agent Mesh Activity
 *.log
+.agent_mesh/*.log
+.agent_mesh/*.tmp
 
 # OS Generated
 .DS_Store

@@ -89,6 +89,9 @@ def check_workspace_files():
     print("\n[4/5] Validating Workspace Structure...")
     critical_paths = [
         "sentinel_pipeline.py",
+        "agent_mesh.py",
+        "agent_auto_sync.py",
+        "AGENT_PROTOCOL.md",
         "blackbox-sentinel.code-workspace",
         ".vscode/launch.json",
         ".vscode/settings.json",
