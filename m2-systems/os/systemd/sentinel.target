@@ -1,0 +1,7 @@
+[Unit]
+Description=BlackBox Sentinel Autonomous Edge Defense Appliance Target
+Requires=sentinel-bridge.service sentinel-core.service sentinel-gui.service
+After=sentinel-bridge.service sentinel-core.service sentinel-gui.service
+
+[Install]
+WantedBy=multi-user.target

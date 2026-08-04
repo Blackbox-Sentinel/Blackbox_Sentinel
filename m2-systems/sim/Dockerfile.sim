@@ -1,0 +1,33 @@
+FROM python:3.11-slim-bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV SENTINEL_HARDWARE=sim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bridge-utils \
+    iproute2 \
+    iptables \
+    tcpdump \
+    ethtool \
+    net-tools \
+    iputils-ping \
+    curl \
+    gcc \
+    g++ \
+    libatlas-base-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/blackbox-sentinel
+
+# Copy requirements and install
+COPY . /opt/blackbox-sentinel/
+
+RUN pip install --no-cache-dir \
+    scapy \
+    numpy \
+    pandas \
+    scikit-learn \
+    joblib
+
+CMD ["python", "m2-systems/sim/run_simulation.py"]

@@ -1,0 +1,57 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "📦 Install Project Dependencies",
+            "type": "shell",
+            "command": "pip install -r requirements.txt",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "🛡️ Start BlackBox Sentinel Pipeline (Sim Mode)",
+            "type": "shell",
+            "command": "python sentinel_pipeline.py --mode sim --gui",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "🌐 Launch Web Kiosk & CAD Studio Server (8080)",
+            "type": "shell",
+            "command": "python m4-gui-venture/server.py",
+            "problemMatcher": [],
+            "isBackground": true,
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "⚡ Launch Hardware Bridge Simulator Server (5000)",
+            "type": "shell",
+            "command": "python m4-gui-venture/hw_simulator_server.py",
+            "problemMatcher": [],
+            "isBackground": true,
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "🧪 Run Unit Test Suite",
+            "type": "shell",
+            "command": "pytest -v",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        }
+    ]
+}

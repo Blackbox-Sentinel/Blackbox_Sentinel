@@ -31,7 +31,7 @@ STATE_FILE = os.path.join(MODEL_DIR, "device_state.json")
 
 # Calibration window (seconds) — 30 min for demo, 48h in production
 CALIBRATION_WINDOW = 30 * 60  # 1800 seconds for demo
-ANOMALY_THRESHOLD = -0.5      # Isolation Forest decision threshold
+ANOMALY_THRESHOLD = 0.0       # Standard Isolation Forest decision boundary (<0 is anomalous)
 
 
 class AnomalyScorer:

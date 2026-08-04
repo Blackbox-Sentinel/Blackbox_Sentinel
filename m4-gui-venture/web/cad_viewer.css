@@ -1,0 +1,506 @@
+/* ==============================================================================
+   BLACKBOX SENTINEL — 3D CAD STUDIO STYLESHEET
+   Dark Industrial Engineering Theme with Ubuntu Yaru Accents
+   ============================================================================== */
+
+:root {
+    --bg-main: #0c0e14;
+    --bg-panel: #141720;
+    --bg-card: #1c212d;
+    --bg-chip: #242a3a;
+    --border: #2c3447;
+    --border-bright: #3f4a64;
+    --orange: #E95420;
+    --orange-glow: 0 0 16px rgba(233, 84, 32, 0.4);
+    --green: #38b44a;
+    --blue: #00a3e0;
+    --purple: #9b59b6;
+    --red: #df382c;
+    --text: #f0f2f7;
+    --text-muted: #8c94a8;
+    --font: 'Ubuntu', sans-serif;
+    --mono: 'Ubuntu Mono', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    background: var(--bg-main);
+    color: var(--text);
+    font-family: var(--font);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+}
+
+/* ── Top Header ───────────────────────────────────────────────────────── */
+#cad-header {
+    height: 54px;
+    background: #10131b;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 16px;
+    z-index: 50;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.nav-back-btn {
+    padding: 6px 12px;
+    background: #1e2433;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 11px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.nav-back-btn:hover {
+    background: #2a3347;
+    border-color: var(--orange);
+    color: #fff;
+}
+
+.header-title-box h1 {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
+
+.badge-cad {
+    font-size: 9px;
+    color: var(--orange);
+    font-family: var(--mono);
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.view-preset-group {
+    display: flex;
+    background: #1a1f2b;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px;
+    gap: 2px;
+}
+
+.preset-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    padding: 5px 12px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.preset-btn.active, .preset-btn:hover {
+    background: var(--bg-card);
+    color: #fff;
+}
+
+.header-right {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-cad-primary {
+    background: var(--orange);
+    color: #fff;
+    border: 1px solid var(--orange);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-cad-primary:hover {
+    background: #f06a38;
+}
+
+.btn-cad-secondary {
+    background: #202636;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-cad-secondary:hover {
+    background: #2a3347;
+}
+
+/* ── Workspace ────────────────────────────────────────────────────────── */
+#cad-workspace {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 280px 1fr 340px;
+    overflow: hidden;
+}
+
+/* ── Sidebars ─────────────────────────────────────────────────────────── */
+#cad-sidebar-left, #cad-sidebar-right {
+    background: var(--bg-panel);
+    border-right: 1px solid var(--border);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+}
+
+#cad-sidebar-right {
+    border-right: none;
+    border-left: 1px solid var(--border);
+}
+
+.cad-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.flex-fill {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.card-header .icon { font-size: 16px; }
+.card-header h3 {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.8px;
+    font-family: var(--mono);
+}
+
+/* Explode Slider */
+.explode-control-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    margin-bottom: 6px;
+}
+
+.explode-val {
+    font-family: var(--mono);
+    color: var(--orange);
+    font-weight: 700;
+}
+
+input[type="range"] {
+    width: 100%;
+    accent-color: var(--orange);
+    height: 6px;
+    background: #111;
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+}
+
+.quick-explode-btns {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.btn-sm {
+    background: #151923;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-muted);
+    font-size: 10px;
+    padding: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.btn-sm:hover {
+    background: #232a3a;
+    color: #fff;
+    border-color: var(--border-bright);
+}
+
+/* Render Modes */
+.render-modes-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.mode-btn {
+    background: #161b26;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s;
+}
+
+.mode-btn:hover { background: #222938; color: #fff; }
+.mode-btn.active {
+    background: #252e42;
+    color: #fff;
+    border-color: var(--orange);
+}
+
+.toggle-row {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.toggle-row label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+/* Assembly Tree */
+.tree-container {
+    flex: 1;
+    overflow-y: auto;
+    background: #11141c;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tree-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.tree-item:hover {
+    background: #1e2433;
+    color: #fff;
+}
+
+.tree-item.selected {
+    background: rgba(233, 84, 32, 0.2);
+    color: #fff;
+    border-left: 2px solid var(--orange);
+}
+
+/* ── Center WebGL Canvas ──────────────────────────────────────────────── */
+#cad-canvas-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle at center, #181d28 0%, #0c0e14 100%);
+    overflow: hidden;
+}
+
+#webgl-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    outline: none;
+}
+
+#loading-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(12, 14, 20, 0.9);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    z-index: 10;
+    transition: opacity 0.4s;
+}
+
+#loading-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(233, 84, 32, 0.2);
+    border-top-color: var(--orange);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Viewport Overlays */
+.viewport-hud {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    background: rgba(16, 19, 27, 0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    pointer-events: none;
+}
+
+.hud-item {
+    font-size: 10px;
+    font-family: var(--mono);
+    display: flex;
+    gap: 8px;
+}
+
+.hud-label { color: var(--text-muted); }
+.hud-val { color: var(--orange); font-weight: 700; }
+
+.viewport-tips {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(16, 19, 27, 0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    padding: 6px 16px;
+    font-size: 11px;
+    color: var(--text-muted);
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+.viewport-tips strong { color: #fff; }
+
+/* ── Right Inspector Panel ────────────────────────────────────────────── */
+#inspect-content {
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.placeholder-msg {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 16px 8px;
+    font-size: 11px;
+}
+
+.inspect-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.inspect-header-badge {
+    display: inline-block;
+    background: rgba(233, 84, 32, 0.2);
+    border: 1px solid var(--orange);
+    color: var(--orange);
+    font-size: 10px;
+    font-weight: 700;
+    font-family: var(--mono);
+    padding: 2px 6px;
+    border-radius: 4px;
+    align-self: flex-start;
+}
+
+.inspect-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+}
+
+.inspect-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.inspect-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 4px;
+    font-size: 11px;
+}
+
+.inspect-table td {
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.inspect-table td:first-child {
+    color: var(--text-muted);
+    font-family: var(--mono);
+    width: 45%;
+}
+
+.inspect-table td:last-child {
+    color: #fff;
+    font-weight: 600;
+}
+
+/* Fabrication Specs */
+.fab-specs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 11px;
+    margin-bottom: 12px;
+}
+
+.spec-row {
+    display: flex;
+    justify-content: space-between;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.spec-lbl { color: var(--text-muted); font-size: 10px; }
+.spec-val { font-weight: 600; color: var(--text); font-size: 11px; }
+
+.full-width { width: 100%; }
+.action-buttons-wrap { margin-top: auto; }

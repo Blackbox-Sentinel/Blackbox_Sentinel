@@ -1,0 +1,1293 @@
+/* ==============================================================================
+   UBUNTU 24.04 LTS (YARU DARK) — BLACKBOX SENTINEL APPLIANCE OS DESIGN SYSTEM
+   Authentic Canonical Yaru Theme: Aubergine, Ubuntu Orange (#E95420), Slate Dark
+   ============================================================================== */
+
+:root {
+    /* Canonical Ubuntu Palette */
+    --ubuntu-orange: #E95420;
+    --ubuntu-orange-hover: #f06a38;
+    --ubuntu-aubergine: #77216F;
+    --ubuntu-aubergine-dark: #2C001E;
+    --ubuntu-mid-aubergine: #5E2750;
+    
+    /* Yaru Dark UI Tokens */
+    --yaru-dark-bg: #1e1e1e;
+    --yaru-panel-bg: #262626;
+    --yaru-card-bg: #303030;
+    --yaru-card-hover: #3a3a3a;
+    --yaru-border: #424242;
+    --yaru-border-light: rgba(255, 255, 255, 0.1);
+    --yaru-topbar: #111111;
+    --yaru-dock: rgba(20, 20, 20, 0.88);
+    
+    /* Status Colors */
+    --color-green: #38b44a;
+    --color-green-glow: 0 0 12px rgba(56, 180, 74, 0.4);
+    --color-red: #df382c;
+    --color-red-glow: 0 0 15px rgba(223, 56, 44, 0.5);
+    --color-blue: #00a3e0;
+    --color-purple: #9b59b6;
+    --color-amber: #f39c12;
+    
+    /* Typography */
+    --font-ubuntu: 'Ubuntu', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'Ubuntu Mono', 'JetBrains Mono', monospace;
+    --font-inter: 'Inter', sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background-color: #0c0814;
+    font-family: var(--font-ubuntu);
+    color: #ffffff;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   1. GDM LOCK / LOGIN SCREEN
+   ══════════════════════════════════════════════════════════════════════════ */
+#gdm-lock-screen {
+    position: fixed;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: radial-gradient(ellipse at 30% 20%, #77216F 0%, #2C001E 45%, #0e0716 100%);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 12px 24px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s ease;
+    transform: scale(1.02);
+}
+
+#gdm-lock-screen.active {
+    opacity: 1;
+    pointer-events: all;
+    transform: scale(1);
+}
+
+.gdm-top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.ubuntu-brand-text {
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.gdm-top-right {
+    display: flex;
+    gap: 14px;
+}
+
+.gdm-icon {
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.gdm-center-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 420px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.gdm-clock-box {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.gdm-clock {
+    font-size: 64px;
+    font-weight: 300;
+    letter-spacing: -1px;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.gdm-date {
+    font-size: 16px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.85);
+    margin-top: -4px;
+}
+
+.gdm-node-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 3px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: rgba(255, 255, 255, 0.9);
+    margin-top: 8px;
+}
+
+.pulse-dot {
+    width: 7px;
+    height: 7px;
+    background: var(--color-green);
+    border-radius: 50%;
+    box-shadow: var(--color-green-glow);
+    animation: pulseGlow 1.5s infinite;
+}
+
+@keyframes pulseGlow {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.3); opacity: 0.6; }
+}
+
+.gdm-auth-card {
+    background: rgba(30, 30, 30, 0.85);
+    border: 1px solid var(--yaru-border);
+    backdrop-filter: blur(20px);
+    border-radius: 14px;
+    padding: 20px 24px;
+    width: 100%;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+    text-align: center;
+}
+
+.gdm-avatar-wrap {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 8px;
+}
+
+.gdm-avatar {
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, var(--ubuntu-aubergine), var(--ubuntu-orange));
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 28px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+}
+
+.gdm-username {
+    font-size: 17px;
+    font-weight: 700;
+}
+
+.gdm-user-role {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 14px;
+}
+
+.gdm-input-wrapper {
+    display: flex;
+    background: #111111;
+    border: 1px solid var(--yaru-border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    transition: border-color 0.2s;
+}
+
+.gdm-input-wrapper:focus-within {
+    border-color: var(--ubuntu-orange);
+    box-shadow: 0 0 0 2px rgba(233, 84, 32, 0.3);
+}
+
+#gdm-password-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    padding: 10px 14px;
+    color: #ffffff;
+    font-size: 14px;
+    font-family: var(--font-ubuntu);
+    outline: none;
+}
+
+.gdm-submit-btn {
+    background: var(--ubuntu-orange);
+    border: none;
+    color: #ffffff;
+    padding: 0 16px;
+    font-size: 16px;
+    cursor: pointer;
+    font-weight: 700;
+    transition: background 0.15s;
+}
+
+.gdm-submit-btn:hover {
+    background: var(--ubuntu-orange-hover);
+}
+
+.gdm-quick-keypad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+
+.gdm-quick-keypad button {
+    background: #2b2b2b;
+    border: 1px solid var(--yaru-border);
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 9px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+
+.gdm-quick-keypad button:active {
+    transform: scale(0.95);
+    background: var(--ubuntu-orange);
+}
+
+.gdm-quick-keypad .key-sub {
+    background: rgba(223, 56, 44, 0.2);
+    color: #ff6b6b;
+    border-color: rgba(223, 56, 44, 0.4);
+    font-size: 11px;
+}
+
+.gdm-quick-keypad .key-act {
+    background: rgba(56, 180, 74, 0.25);
+    color: var(--color-green);
+    border-color: rgba(56, 180, 74, 0.4);
+    font-size: 11px;
+}
+
+.gdm-footer-security {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.security-chip {
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   2. DESKTOP SHELL & TOP BAR
+   ══════════════════════════════════════════════════════════════════════════ */
+#desktop-env {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: radial-gradient(ellipse at 40% 30%, #4a154b 0%, #200015 60%, #0a040f 100%);
+    background-size: cover;
+    position: relative;
+}
+
+/* Top GNOME Bar */
+#gnome-topbar {
+    height: 28px;
+    background: var(--yaru-topbar);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 8px;
+    font-size: 12px;
+    font-weight: 500;
+    z-index: 500;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.topbar-btn {
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    font-family: var(--font-ubuntu);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.topbar-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.active-app-title {
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.topbar-center {
+    display: flex;
+    justify-content: center;
+}
+
+.topbar-right {
+    display: flex;
+    align-items: center;
+}
+
+.quick-settings-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 2px 10px;
+    border-radius: 14px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.quick-settings-pill:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Quick Settings Dropdown */
+.gnome-menu {
+    position: absolute;
+    top: 32px;
+    right: 12px;
+    width: 290px;
+    background: rgba(36, 36, 36, 0.95);
+    border: 1px solid var(--yaru-border);
+    backdrop-filter: blur(25px);
+    border-radius: 12px;
+    padding: 14px;
+    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.7);
+    z-index: 600;
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.gnome-menu.active {
+    display: flex;
+}
+
+.qs-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.qs-tile {
+    background: #333333;
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.qs-tile:hover {
+    background: #3d3d3d;
+}
+
+.qs-tile.active {
+    background: var(--ubuntu-orange);
+}
+
+.qs-tile-icon {
+    font-size: 18px;
+}
+
+.qs-tile-title {
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.qs-tile-sub {
+    font-size: 9px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.qs-slider-group {
+    background: #333333;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 11px;
+}
+
+.qs-slider-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.qs-slider-row input[type="range"] {
+    accent-color: var(--ubuntu-orange);
+    height: 4px;
+    border-radius: 2px;
+}
+
+.qs-bottom-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding-top: 8px;
+}
+
+.qs-action-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #333333;
+    border: none;
+    color: #ffffff;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 14px;
+}
+
+.qs-action-btn:hover {
+    background: #444444;
+}
+
+.btn-power:hover {
+    background: var(--color-red);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   UBUNTU LEFT DOCK (Dash-to-Dock)
+   ══════════════════════════════════════════════════════════════════════════ */
+#ubuntu-dock {
+    position: absolute;
+    top: 28px;
+    left: 0;
+    bottom: 0;
+    width: 58px;
+    background: var(--yaru-dock);
+    backdrop-filter: blur(15px);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0 8px 0;
+    z-index: 400;
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.dock-apps {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+}
+
+.dock-icon-btn {
+    width: 44px;
+    height: 44px;
+    background: transparent;
+    border: none;
+    border-radius: 10px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    cursor: pointer;
+    transition: transform 0.15s, background 0.15s;
+}
+
+.dock-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: scale(1.08);
+}
+
+.dock-icon-btn:active {
+    transform: scale(0.94);
+}
+
+.dock-app-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 20px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.icon-defense { background: linear-gradient(135deg, #77216F, #E95420); }
+.icon-traffic { background: linear-gradient(135deg, #00a3e0, #2980b9); }
+.icon-ledger { background: linear-gradient(135deg, #8e44ad, #2c3e50); }
+.icon-hardware { background: linear-gradient(135deg, #27ae60, #16a085); }
+.icon-terminal { background: #111111; border: 1px solid rgba(255, 255, 255, 0.2); }
+.icon-settings { background: #555555; }
+.icon-grid { font-size: 24px; color: rgba(255, 255, 255, 0.8); }
+
+.dock-running-dot {
+    position: absolute;
+    left: -4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 12px;
+    background: var(--ubuntu-orange);
+    border-radius: 2px;
+}
+
+.dock-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    background: var(--ubuntu-orange);
+    color: #ffffff;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 10px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DESKTOP WORKSPACE & GNOME WINDOWS
+   ══════════════════════════════════════════════════════════════════════════ */
+#desktop-workspace {
+    flex: 1;
+    margin-left: 58px;
+    position: relative;
+    overflow: hidden;
+    padding: 16px;
+}
+
+.desktop-shortcuts {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    z-index: 1;
+}
+
+.desktop-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 76px;
+    padding: 6px 4px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+    text-align: center;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+    transition: background 0.15s;
+}
+
+.desktop-icon:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.desktop-icon .icon-img {
+    font-size: 32px;
+}
+
+/* GNOME WINDOW (YARU THEME) */
+.gnome-window {
+    position: absolute;
+    top: 20px;
+    left: 30px;
+    right: 20px;
+    bottom: 20px;
+    background: var(--yaru-dark-bg);
+    border: 1px solid var(--yaru-border);
+    border-radius: 10px;
+    box-shadow: 0 15px 45px rgba(0, 0, 0, 0.8);
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 10;
+}
+
+.gnome-window.active {
+    display: flex;
+    animation: gnomeWinOpen 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes gnomeWinOpen {
+    from { opacity: 0; transform: scale(0.98); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.win-titlebar {
+    height: 38px;
+    background: var(--yaru-panel-bg);
+    border-bottom: 1px solid var(--yaru-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 12px;
+    cursor: move;
+}
+
+.win-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.win-app-icon {
+    font-size: 16px;
+}
+
+.win-controls {
+    display: flex;
+    gap: 6px;
+}
+
+.win-btn {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #3a3a3a;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.win-btn:hover { background: #505050; color: #ffffff; }
+.win-close:hover { background: var(--color-red); color: #ffffff; }
+
+.win-content {
+    flex: 1;
+    overflow-y: auto;
+    background: var(--yaru-dark-bg);
+    padding: 16px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   1. DEFENSE CENTER LAYOUT
+   ══════════════════════════════════════════════════════════════════════════ */
+.defense-status-banner {
+    background: linear-gradient(90deg, rgba(119, 33, 111, 0.4), rgba(233, 84, 32, 0.15));
+    border: 1px solid rgba(233, 84, 32, 0.3);
+    border-radius: 8px;
+    padding: 14px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.banner-badge-box {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.status-indicator-ring {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--color-green);
+    box-shadow: var(--color-green-glow);
+}
+
+.status-indicator-ring.pulse-red {
+    background: var(--color-red);
+    box-shadow: var(--color-red-glow);
+    animation: blinkSiren 0.6s infinite;
+}
+
+.banner-badge-text h2 {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.banner-badge-text p {
+    font-size: 11px;
+    color: var(--text-muted, #a0a0a0);
+    margin-top: 2px;
+}
+
+.btn-ubuntu {
+    background: var(--ubuntu-orange);
+    border: none;
+    color: #ffffff;
+    font-family: var(--font-ubuntu);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+
+.btn-ubuntu:hover { background: var(--ubuntu-orange-hover); }
+.btn-ubuntu:active { transform: scale(0.96); }
+.btn-danger { background: var(--color-red); }
+.btn-danger:hover { background: #b01810; }
+.btn-secondary { background: #3c3c3c; border: 1px solid var(--yaru-border); }
+.btn-secondary:hover { background: #4a4a4a; }
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.metric-card {
+    background: var(--yaru-card-bg);
+    border: 1px solid var(--yaru-border);
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+
+.metric-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #a8a8a8;
+    letter-spacing: 0.5px;
+}
+
+.metric-value {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: #ffffff;
+    margin: 4px 0 2px 0;
+}
+
+.metric-sub {
+    font-size: 10px;
+    color: #888888;
+}
+
+.text-green { color: var(--color-green); }
+.text-red { color: var(--color-red); }
+.text-purple { color: var(--color-purple); }
+.text-cyan { color: var(--color-blue); }
+
+.defense-viz-row {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 12px;
+}
+
+.viz-card {
+    background: var(--yaru-card-bg);
+    border: 1px solid var(--yaru-border);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+}
+
+.viz-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.canvas-wrap {
+    background: #111111;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    height: 140px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.alerts-log-scroll {
+    background: #111111;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    height: 140px;
+    overflow-y: auto;
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.log-entry { padding: 2px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); }
+.log-info { color: #a0a0a0; }
+.log-success { color: var(--color-green); }
+.log-danger { color: var(--color-red); font-weight: 700; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   2. TRAFFIC LAB (WIRESHARK STYLE TABLE)
+   ══════════════════════════════════════════════════════════════════════════ */
+.traffic-launcher-bar {
+    background: var(--yaru-panel-bg);
+    border: 1px solid var(--yaru-border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.launcher-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ubuntu-orange);
+}
+
+.launcher-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.btn-atk {
+    background: #383838;
+    border: 1px solid #4f4f4f;
+    color: #ffffff;
+    font-family: var(--font-ubuntu);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.btn-atk:hover {
+    background: var(--color-red);
+    border-color: var(--color-red);
+}
+
+.packet-table-wrapper {
+    background: #111111;
+    border: 1px solid var(--yaru-border);
+    border-radius: 6px;
+    height: 320px;
+    overflow-y: auto;
+}
+
+.packet-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-align: left;
+}
+
+.packet-table th {
+    background: #222222;
+    padding: 8px 10px;
+    color: #a8a8a8;
+    font-weight: 700;
+    border-bottom: 1px solid var(--yaru-border);
+    position: sticky;
+    top: 0;
+}
+
+.packet-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.pkt-row-normal { color: #d0d0d0; }
+.pkt-row-anomaly {
+    background: rgba(223, 56, 44, 0.25) !important;
+    color: #ff7675 !important;
+    font-weight: 700;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   3. FORENSIC LEDGER (NAUTILUS STYLE)
+   ══════════════════════════════════════════════════════════════════════════ */
+.ledger-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--yaru-panel-bg);
+    border: 1px solid var(--yaru-border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+}
+
+.audit-summary-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.ledger-blocks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.ledger-block-item {
+    background: var(--yaru-card-bg);
+    border: 1px solid var(--yaru-border);
+    border-left: 4px solid var(--color-purple);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+
+.block-header {
+    display: flex;
+    justify-content: space-between;
+    font-weight: 700;
+    color: var(--color-purple);
+    margin-bottom: 4px;
+}
+
+.block-hash-line {
+    color: var(--color-blue);
+    word-break: break-all;
+    font-size: 10px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   4. HARDWARE HAL DIAGNOSTICS
+   ══════════════════════════════════════════════════════════════════════════ */
+.hw-cards-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.hw-module-card {
+    background: var(--yaru-card-bg);
+    border: 1px solid var(--yaru-border);
+    border-radius: 8px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.hw-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.hw-icon {
+    font-size: 24px;
+}
+
+.hw-head h3 { font-size: 13px; font-weight: 700; }
+.hw-head p { font-size: 10px; color: #888888; font-family: var(--font-mono); }
+
+.hw-state-row {
+    font-size: 11px;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.badge-status {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   5. GNOME TERMINAL
+   ══════════════════════════════════════════════════════════════════════════ */
+.terminal-layout {
+    background: #000000;
+    padding: 12px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
+.term-body {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.term-prompt-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-top: 8px;
+    border-top: 1px solid #222222;
+}
+
+.term-user-host { color: var(--color-green); font-weight: 700; }
+.term-colon { color: #ffffff; }
+.term-dir { color: #4a90e2; font-weight: 700; }
+.term-dollar { color: #ffffff; }
+
+#term-cli-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    outline: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   6. SETTINGS & ZEROIZATION
+   ══════════════════════════════════════════════════════════════════════════ */
+.settings-layout {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 16px;
+    height: 100%;
+}
+
+.settings-sidebar {
+    background: var(--yaru-panel-bg);
+    border-radius: 8px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.settings-nav-item {
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.settings-nav-item:hover, .settings-nav-item.active {
+    background: var(--ubuntu-orange);
+    color: #ffffff;
+    font-weight: 700;
+}
+
+.settings-main-pane {
+    background: var(--yaru-card-bg);
+    border: 1px solid var(--yaru-border);
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.pane-title { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+
+.setting-row {
+    background: #282828;
+    border: 1px solid var(--yaru-border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+}
+
+.setting-row p { font-size: 10px; color: #888888; margin-top: 2px; }
+
+.zeroization-danger-box {
+    margin-top: auto;
+    background: rgba(223, 56, 44, 0.15);
+    border: 1px solid var(--color-red);
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+
+.zeroization-danger-box h4 { font-size: 12px; color: var(--color-red); margin-bottom: 4px; }
+.zeroization-danger-box p { font-size: 10px; color: #d0d0d0; margin-bottom: 10px; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   3. AIR-GAP LOCKDOWN SYSTEM ALERT OVERLAY
+   ══════════════════════════════════════════════════════════════════════════ */
+#airgap-lockdown-modal {
+    position: fixed;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(15, 0, 5, 0.88);
+    backdrop-filter: blur(20px);
+    z-index: 2000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+#airgap-lockdown-modal.active {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.lockdown-dialog {
+    background: #18080c;
+    border: 2px solid var(--color-red);
+    border-radius: 12px;
+    width: 90%;
+    max-width: 520px;
+    box-shadow: 0 0 50px rgba(223, 56, 44, 0.6);
+    overflow: hidden;
+}
+
+.dialog-header {
+    background: linear-gradient(90deg, #3d0a14, #20040a);
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid rgba(223, 56, 44, 0.4);
+}
+
+.siren-icon { font-size: 28px; animation: bounceSiren 0.6s infinite alternate; }
+
+@keyframes bounceSiren {
+    from { transform: translateY(0); }
+    to { transform: translateY(-4px); }
+}
+
+.dialog-title-text h2 { font-size: 14px; color: var(--color-red); font-weight: 700; }
+.dialog-title-text p { font-size: 10px; color: #d0d0d0; }
+
+.dialog-body {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.threat-detail-box {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.detail-row { display: flex; justify-content: space-between; }
+.detail-row .lbl { color: #a0a0a0; }
+
+.override-pin-section {
+    text-align: center;
+}
+
+.pin-prompt { font-size: 11px; font-weight: 600; margin-bottom: 6px; }
+
+.pin-display-row input {
+    width: 140px;
+    background: #000000;
+    border: 1px solid var(--ubuntu-orange);
+    color: var(--ubuntu-orange);
+    font-size: 20px;
+    font-weight: 700;
+    text-align: center;
+    padding: 4px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    letter-spacing: 4px;
+}
+
+.modal-numpad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    max-width: 240px;
+    margin: 0 auto;
+}
+
+.modal-numpad button {
+    background: #2b2b2b;
+    border: 1px solid var(--yaru-border);
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 8px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.modal-numpad .key-sub { background: rgba(223, 56, 44, 0.25); color: #ff7675; }
+.modal-numpad .key-ok { background: rgba(56, 180, 74, 0.3); color: var(--color-green); }
+
+/* GNOME TOAST NOTIFICATION */
+.gnome-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: rgba(30, 30, 30, 0.95);
+    border: 1px solid var(--ubuntu-orange);
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 10px 18px;
+    border-radius: 8px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7);
+    opacity: 0;
+    transform: translateY(15px);
+    transition: all 0.25s ease;
+    z-index: 3000;
+}
+
+.gnome-toast.show {
+    opacity: 1;
+    transform: translateY(0);
+}

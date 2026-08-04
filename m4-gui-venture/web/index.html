@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ubuntu 24.04 LTS — BlackBox Sentinel Edge Defense OS</title>
+    <!-- Official Ubuntu Font Family -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Ubuntu+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="yaru-dark">
+
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <!-- 1. UBUNTU GDM LOCK / LOGIN SCREEN                                      -->
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <div id="gdm-lock-screen" class="active">
+        <!-- Top GDM Status Bar -->
+        <div class="gdm-top-bar">
+            <div class="gdm-top-left">
+                <span class="ubuntu-brand-text">Ubuntu 24.04 LTS &bull; Sentinel Appliance</span>
+            </div>
+            <div class="gdm-top-right">
+                <span class="gdm-icon" title="Network Bridge Active">🖧</span>
+                <span class="gdm-icon" title="GSM Cellular 2G">📶</span>
+                <span class="gdm-icon" title="Power / Battery">⚡</span>
+                <span class="gdm-icon" title="Power Menu">⏻</span>
+            </div>
+        </div>
+
+        <!-- Center Login Widget -->
+        <div class="gdm-center-container">
+            <div class="gdm-clock-box">
+                <div class="gdm-clock" id="gdm-clock">00:54</div>
+                <div class="gdm-date" id="gdm-date">Tuesday, August 4, 2026</div>
+                <div class="gdm-node-pill">
+                    <span class="pulse-dot"></span> NODE: AEDN-RACK-01 &bull; HARDENED KERNEL 6.6.20-SENTINEL
+                </div>
+            </div>
+
+            <div class="gdm-auth-card">
+                <div class="gdm-avatar-wrap">
+                    <div class="gdm-avatar">
+                        <span class="avatar-shield">🛡️</span>
+                    </div>
+                </div>
+                <div class="gdm-username">sentinel</div>
+                <div class="gdm-user-role">Autonomous Edge Defense Node</div>
+
+                <div class="gdm-input-wrapper">
+                    <input type="password" id="gdm-password-input" placeholder="Password or PIN (Default: 1234)" autocomplete="off" onkeydown="handleGdmKey(event)">
+                    <button class="gdm-submit-btn" onclick="unlockGdm()" title="Sign In">➔</button>
+                </div>
+                <div class="gdm-quick-keypad" id="gdm-keypad">
+                    <button onclick="pressGdmPin('1')">1</button>
+                    <button onclick="pressGdmPin('2')">2</button>
+                    <button onclick="pressGdmPin('3')">3</button>
+                    <button onclick="pressGdmPin('4')">4</button>
+                    <button onclick="pressGdmPin('5')">5</button>
+                    <button onclick="pressGdmPin('6')">6</button>
+                    <button onclick="pressGdmPin('7')">7</button>
+                    <button onclick="pressGdmPin('8')">8</button>
+                    <button onclick="pressGdmPin('9')">9</button>
+                    <button class="key-sub" onclick="clearGdmPin()">CLR</button>
+                    <button onclick="pressGdmPin('0')">0</button>
+                    <button class="key-act" onclick="unlockGdm()">LOGIN</button>
+                </div>
+            </div>
+
+            <div class="gdm-footer-security">
+                <div class="security-chip">
+                    <span class="sec-icon">🔒</span>
+                    <span>Volatile RAM Keystore: <strong class="text-green">Mounted (tmpfs)</strong></span>
+                </div>
+                <div class="security-chip">
+                    <span class="sec-icon">⚡</span>
+                    <span>5V Mechanical Relay: <strong class="text-green" id="gdm-relay-status">ENGAGED</strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <!-- 2. UBUNTU DESKTOP ENVIRONMENT                                          -->
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <div id="desktop-env">
+
+        <!-- ── Top GNOME Bar ─────────────────────────────────────────────── -->
+        <header id="gnome-topbar">
+            <div class="topbar-left">
+                <button class="topbar-btn activities-btn" onclick="toggleAppOverview()">Activities</button>
+                <span class="active-app-title" id="active-app-name">Sentinel Defense Center</span>
+            </div>
+
+            <div class="topbar-center">
+                <button class="topbar-btn date-menu-btn" onclick="toggleDateMenu()">
+                    <span id="topbar-date-time">Aug 4 00:54</span>
+                </button>
+            </div>
+
+            <div class="topbar-right">
+                <div class="quick-settings-pill" onclick="toggleQuickSettings()">
+                    <span class="qs-icon">🖧</span>
+                    <span class="qs-icon">📶</span>
+                    <span class="qs-icon">🛡️</span>
+                    <span class="qs-icon">⏻</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ── Quick Settings Dropdown ──────────────────────────────────── -->
+        <div id="quick-settings-menu" class="gnome-menu">
+            <div class="qs-grid">
+                <div class="qs-tile active" onclick="toggleDefenseEngine()">
+                    <div class="qs-tile-icon">🛡️</div>
+                    <div class="qs-tile-text">
+                        <div class="qs-tile-title">AI Defense</div>
+                        <div class="qs-tile-sub" id="qs-defense-status">Armed & Active</div>
+                    </div>
+                </div>
+                <div class="qs-tile active">
+                    <div class="qs-tile-icon">🖧</div>
+                    <div class="qs-tile-text">
+                        <div class="qs-tile-title">Bridge br0</div>
+                        <div class="qs-tile-sub">eth0 ↔ eth1</div>
+                    </div>
+                </div>
+                <div class="qs-tile active">
+                    <div class="qs-tile-icon">📶</div>
+                    <div class="qs-tile-text">
+                        <div class="qs-tile-title">GSM 2G</div>
+                        <div class="qs-tile-sub">SIM800L Connected</div>
+                    </div>
+                </div>
+                <div class="qs-tile" onclick="triggerTamperAlert()">
+                    <div class="qs-tile-icon">🚨</div>
+                    <div class="qs-tile-text">
+                        <div class="qs-tile-title">Tamper Test</div>
+                        <div class="qs-tile-sub">Trip Chassis Sensor</div>
+                    </div>
+                </div>
+            </div>
+            <div class="qs-slider-group">
+                <div class="qs-slider-row">
+                    <span>💡 OLED Brightness</span>
+                    <input type="range" min="10" max="100" value="90">
+                </div>
+            </div>
+            <div class="qs-bottom-actions">
+                <button class="qs-action-btn" onclick="openApp('settings')" title="Settings">⚙️</button>
+                <button class="qs-action-btn" onclick="lockDesktop()" title="Lock Screen">🔒</button>
+                <button class="qs-action-btn btn-power" onclick="location.reload()" title="Restart Appliance">⏻</button>
+            </div>
+        </div>
+
+        <!-- ── Ubuntu Left Dock (Dash-to-Dock) ───────────────────────────── -->
+        <nav id="ubuntu-dock">
+            <div class="dock-apps">
+                <button class="dock-icon-btn active" data-app="defense" onclick="openApp('defense')" title="Sentinel Defense Center">
+                    <div class="dock-app-icon icon-defense">🛡️</div>
+                    <span class="dock-running-dot"></span>
+                </button>
+                <button class="dock-icon-btn" data-app="traffic" onclick="openApp('traffic')" title="Adversary Traffic Lab & Packet Sniffer">
+                    <div class="dock-app-icon icon-traffic">🌊</div>
+                    <span class="dock-running-dot"></span>
+                </button>
+                <button class="dock-icon-btn" data-app="ledger" onclick="openApp('ledger')" title="Forensic Ledger Explorer">
+                    <div class="dock-app-icon icon-ledger">📋</div>
+                    <span class="dock-badge" id="dock-ledger-badge">1</span>
+                </button>
+                <button class="dock-icon-btn" data-app="hardware" onclick="openApp('hardware')" title="Hardware Peripherals & GPIO">
+                    <div class="dock-app-icon icon-hardware">🔌</div>
+                </button>
+                <button class="dock-icon-btn" data-app="terminal" onclick="openApp('terminal')" title="GNOME Terminal">
+                    <div class="dock-app-icon icon-terminal">💻</div>
+                    <span class="dock-running-dot"></span>
+                </button>
+                <button class="dock-icon-btn" onclick="window.location.href='/cad_viewer.html'" title="3D CAD Hardware Studio">
+                    <div class="dock-app-icon" style="background: linear-gradient(135deg, #e95420, #b83d10); border-radius: 8px;">📐</div>
+                </button>
+                <button class="dock-icon-btn" data-app="settings" onclick="openApp('settings')" title="System Settings">
+                    <div class="dock-app-icon icon-settings">⚙️</div>
+                </button>
+            </div>
+            <div class="dock-bottom">
+                <button class="dock-icon-btn dock-overview-btn" onclick="toggleAppOverview()" title="Show Applications">
+                    <div class="dock-app-icon icon-grid">⊞</div>
+                </button>
+            </div>
+        </nav>
+
+        <!-- ── Desktop Canvas Workspace ──────────────────────────────────── -->
+        <main id="desktop-workspace">
+
+            <!-- Desktop Icons -->
+            <div class="desktop-shortcuts">
+                <div class="desktop-icon" ondblclick="openApp('defense')">
+                    <div class="icon-img">🛡️</div>
+                    <span>Sentinel Hub</span>
+                </div>
+                <div class="desktop-icon" ondblclick="openApp('traffic')">
+                    <div class="icon-img">🌊</div>
+                    <span>Traffic Lab</span>
+                </div>
+                <div class="desktop-icon" ondblclick="openApp('ledger')">
+                    <div class="icon-img">📁</div>
+                    <span>/var/log/ledger</span>
+                </div>
+                <div class="desktop-icon" ondblclick="openApp('terminal')">
+                    <div class="icon-img">💻</div>
+                    <span>Terminal</span>
+                </div>
+                <div class="desktop-icon" ondblclick="window.location.href='/cad_viewer.html'">
+                    <div class="icon-img">📐</div>
+                    <span>3D CAD Studio</span>
+                </div>
+                <div class="desktop-icon" ondblclick="window.location.href='/simulator.html'">
+                    <div class="icon-img">⚡</div>
+                    <span>Circuit Sim</span>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════════════════════ -->
+            <!-- APP WINDOW 1: SENTINEL DEFENSE CENTER (GNOME Control Center)   -->
+            <!-- ══════════════════════════════════════════════════════════════ -->
+            <div class="gnome-window active" id="win-defense">
+                <div class="win-titlebar" onmousedown="startDrag(event, 'win-defense')">
+                    <div class="win-title">
+                        <span class="win-app-icon">🛡️</span>
+                        <span>Sentinel Defense Center — AEDN-RACK-01</span>
+                    </div>
+                    <div class="win-controls">
+                        <button class="win-btn win-min" onclick="minimizeApp('defense')">🗕</button>
+                        <button class="win-btn win-max" onclick="toggleMaximize('win-defense')">🗖</button>
+                        <button class="win-btn win-close" onclick="closeApp('defense')">✕</button>
+                    </div>
+                </div>
+                <div class="win-content defense-layout">
+                    <!-- Status Header Banner -->
+                    <div class="defense-status-banner">
+                        <div class="banner-badge-box">
+                            <div class="status-indicator-ring pulse-green" id="defense-ring"></div>
+                            <div class="banner-badge-text">
+                                <h2 id="defense-state-text">SYSTEM ARMED &amp; DEFENDING</h2>
+                                <p>Isolation Forest Real-Time Boundary Model &bull; Transparent L2 Bridge <code>br0</code></p>
+                            </div>
+                        </div>
+                        <div class="banner-actions">
+                            <button class="btn-ubuntu btn-danger" id="btn-killswitch" onclick="toggleManualLineCut()">
+                                ⚡ MANUAL AIR-GAP CUT
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Metrics Grid -->
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-label">INLINE PACKETS INSPECTED</div>
+                            <div class="metric-value" id="metric-pkts">0</div>
+                            <div class="metric-sub">Bridge <code>br0</code> &bull; 0.04ms avg latency</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">DETECTED ANOMALIES</div>
+                            <div class="metric-value text-red" id="metric-anomalies">0</div>
+                            <div class="metric-sub">0 False Positives logged</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">5V RELAY ACTUATOR</div>
+                            <div class="metric-value text-green" id="metric-relay">ENGAGED</div>
+                            <div class="metric-sub">BCM GPIO 17 &bull; Line Connected</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-label">FORENSIC LEDGER CHAIN</div>
+                            <div class="metric-value text-purple" id="metric-blocks">1 BLOCKS</div>
+                            <div class="metric-sub">SHA-256 Merkle verified</div>
+                        </div>
+                    </div>
+
+                    <!-- Visual Spectrum Scope & Live Threat Waterfall -->
+                    <div class="defense-viz-row">
+                        <div class="viz-card spectrum-viz">
+                            <div class="viz-header">
+                                <span>LIVE ISOLATION FOREST SCORE SPECTRUM</span>
+                                <span class="text-green" id="viz-score-val">SCORE: +0.145 [NORMAL]</span>
+                            </div>
+                            <div class="canvas-wrap">
+                                <canvas id="score-spectrum-canvas" width="540" height="130"></canvas>
+                            </div>
+                        </div>
+                        <div class="viz-card live-alerts-viz">
+                            <div class="viz-header">
+                                <span>REAL-TIME AUDIT LOG</span>
+                                <span class="badge-pill" id="log-count-badge">READY</span>
+                            </div>
+                            <div class="alerts-log-scroll" id="defense-alerts-log">
+                                <div class="log-entry log-info">[SYSTEM] Kernel boot complete. Volatile keys mounted in RAM.</div>
+                                <div class="log-entry log-success">[AI-MODEL] Baseline calibration completed with 120 samples. ARMED.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════════════════════ -->
+            <!-- APP WINDOW 2: ADVERSARY TRAFFIC LAB (Wireshark / Analyzer)     -->
+            <!-- ══════════════════════════════════════════════════════════════ -->
+            <div class="gnome-window" id="win-traffic">
+                <div class="win-titlebar" onmousedown="startDrag(event, 'win-traffic')">
+                    <div class="win-title">
+                        <span class="win-app-icon">🌊</span>
+                        <span>Adversary Traffic Lab &bull; Inline Sniffer &amp; Attack Injector</span>
+                    </div>
+                    <div class="win-controls">
+                        <button class="win-btn win-min" onclick="minimizeApp('traffic')">🗕</button>
+                        <button class="win-btn win-max" onclick="toggleMaximize('win-traffic')">🗖</button>
+                        <button class="win-btn win-close" onclick="closeApp('traffic')">✕</button>
+                    </div>
+                </div>
+                <div class="win-content traffic-layout">
+                    <!-- Attack Launcher Panel -->
+                    <div class="traffic-launcher-bar">
+                        <span class="launcher-title">⚔️ INJECT ADVERSARIAL ATTACK VECTOR:</span>
+                        <div class="launcher-buttons">
+                            <button class="btn-atk btn-atk-c2" onclick="injectAttack('EXFILTRATION')">
+                                📤 Rogue C2 Exfiltration (Port 4444)
+                            </button>
+                            <button class="btn-atk btn-atk-syn" onclick="injectAttack('SYN_FLOOD')">
+                                🌊 TCP SYN Flood
+                            </button>
+                            <button class="btn-atk btn-atk-scan" onclick="injectAttack('PORT_SCAN')">
+                                🔍 Recon / Port Sweep
+                            </button>
+                            <button class="btn-atk btn-atk-zero" onclick="injectAttack('ZERO_DAY')">
+                                ☣️ Zero-Day Protocol Anomaly
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Live Packet Sniffer Table -->
+                    <div class="packet-table-wrapper">
+                        <table class="packet-table" id="sniffer-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 60px;">No.</th>
+                                    <th style="width: 90px;">Time</th>
+                                    <th style="width: 140px;">Source</th>
+                                    <th style="width: 140px;">Destination</th>
+                                    <th style="width: 80px;">Protocol</th>
+                                    <th style="width: 80px;">Length</th>
+                                    <th>Info &amp; Anomaly Decision</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sniffer-tbody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════════════════════ -->
+            <!-- APP WINDOW 3: FORENSIC LEDGER EXPLORER (Nautilus Style)        -->
+            <!-- ══════════════════════════════════════════════════════════════ -->
+            <div class="gnome-window" id="win-ledger">
+                <div class="win-titlebar" onmousedown="startDrag(event, 'win-ledger')">
+                    <div class="win-title">
+                        <span class="win-app-icon">📋</span>
+                        <span>Forensic Ledger Explorer — /var/log/sentinel/ledger.json</span>
+                    </div>
+                    <div class="win-controls">
+                        <button class="win-btn win-min" onclick="minimizeApp('ledger')">🗕</button>
+                        <button class="win-btn win-max" onclick="toggleMaximize('win-ledger')">🗖</button>
+                        <button class="win-btn win-close" onclick="closeApp('ledger')">✕</button>
+                    </div>
+                </div>
+                <div class="win-content ledger-layout">
+                    <div class="ledger-toolbar">
+                        <div class="audit-summary-pill">
+                            <span class="icon">🔐</span>
+                            <span id="ledger-audit-text">Chain Integrity: <strong>100% Cryptographically Valid</strong></span>
+                        </div>
+                        <div class="ledger-actions">
+                            <button class="btn-ubuntu btn-secondary" onclick="verifyLedgerChain()">🔄 Verify Hash Chain</button>
+                            <button class="btn-ubuntu btn-primary" onclick="exportLedgerJSON()">⬇ Export Forensic Receipt</button>
+                        </div>
+                    </div>
+
+                    <div class="ledger-blocks-list" id="ledger-blocks-container">
+                        <!-- Dynamic Block Cards -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════════════════════ -->
+            <!-- APP WINDOW 4: HARDWARE HAL PERIPHERALS                         -->
+            <!-- ══════════════════════════════════════════════════════════════ -->
+            <div class="gnome-window" id="win-hardware">
+                <div class="win-titlebar" onmousedown="startDrag(event, 'win-hardware')">
+                    <div class="win-title">
+                        <span class="win-app-icon">🔌</span>
+                        <span>Hardware Abstraction Layer (HAL) &bull; Diagnostic Manager</span>
+                    </div>
+                    <div class="win-controls">
+                        <button class="win-btn win-min" onclick="minimizeApp('hardware')">🗕</button>
+                        <button class="win-btn win-max" onclick="toggleMaximize('win-hardware')">🗖</button>
+                        <button class="win-btn win-close" onclick="closeApp('hardware')">✕</button>
+                    </div>
+                </div>
+                <div class="win-content hw-layout">
+                    <div class="hw-cards-grid">
+                        <div class="hw-module-card">
+                            <div class="hw-head">
+                                <div class="hw-icon">⚡</div>
+                                <div>
+                                    <h3>5V Mechanical Isolation Relay</h3>
+                                    <p>BCM GPIO 17 &bull; Driver: <code>RealRelay / SimRelay</code></p>
+                                </div>
+                            </div>
+                            <div class="hw-state-row">
+                                <span>Actuator State:</span>
+                                <span class="badge-status text-green" id="hw-relay-tag">ENGAGED (0V Normal)</span>
+                            </div>
+                            <button class="btn-ubuntu btn-secondary" onclick="toggleManualLineCut()">Toggle Mechanical Relay</button>
+                        </div>
+
+                        <div class="hw-module-card">
+                            <div class="hw-head">
+                                <div class="hw-icon">🛡️</div>
+                                <div>
+                                    <h3>Chassis Anti-Tamper Sensor</h3>
+                                    <p>BCM GPIO 27 &amp; 22 &bull; Active-Low Grid</p>
+                                </div>
+                            </div>
+                            <div class="hw-state-row">
+                                <span>Enclosure State:</span>
+                                <span class="badge-status text-green" id="hw-tamper-tag">CONTINUOUS (SECURE)</span>
+                            </div>
+                            <button class="btn-ubuntu btn-danger" onclick="triggerTamperAlert()">Trip Microswitch Circuit</button>
+                        </div>
+
+                        <div class="hw-module-card">
+                            <div class="hw-head">
+                                <div class="hw-icon">📱</div>
+                                <div>
+                                    <h3>SIM800L Cellular Modem (OOB)</h3>
+                                    <p>UART <code>/dev/serial0</code> @ 9600 Baud</p>
+                                </div>
+                            </div>
+                            <div class="hw-state-row">
+                                <span>GSM Network:</span>
+                                <span class="badge-status text-cyan">REGISTERED (RSSI: 28/31)</span>
+                            </div>
+                            <button class="btn-ubuntu btn-secondary" onclick="sendTestSMS()">Send Test Out-of-Band SMS</button>
+                        </div>
+
+                        <div class="hw-module-card">
+                            <div class="hw-head">
+                                <div class="hw-icon">📡</div>
+                                <div>
+                                    <h3>ESP32-S3 Mesh Radio</h3>
+                                    <p>Protocol: ESP-NOW 2.4GHz P2P Threat Gossip</p>
+                                </div>
+                            </div>
+                            <div class="hw-state-row">
+                                <span>Mesh Topology:</span>
+                                <span class="badge-status text-purple">ACTIVE (Rack Node Listening)</span>
+                            </div>
+                            <button class="btn-ubuntu btn-secondary" onclick="broadcastMeshThreat()">Gossip Lateral Threat</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════════════════════ -->
+            <!-- APP WINDOW 5: GNOME TERMINAL (Ubuntu Bash Console)             -->
+            <!-- ══════════════════════════════════════════════════════════════ -->
+            <div class="gnome-window" id="win-terminal">
+                <div class="win-titlebar" onmousedown="startDrag(event, 'win-terminal')">
+                    <div class="win-title">
+                        <span class="win-app-icon">💻</span>
+                        <span>sentinel@ubuntu-sentinel: ~</span>
+                    </div>
+                    <div class="win-controls">
+                        <button class="win-btn win-min" onclick="minimizeApp('terminal')">🗕</button>
+                        <button class="win-btn win-max" onclick="toggleMaximize('win-terminal')">🗖</button>
+                        <button class="win-btn win-close" onclick="closeApp('terminal')">✕</button>
+                    </div>
+                </div>
+                <div class="win-content terminal-layout">
+                    <div class="term-body" id="gnome-term-body">
+                        <div class="term-line text-white">Linux ubuntu-sentinel 6.6.20-hardened-arm64 #1 SMP PREEMPT aarch64</div>
+                        <div class="term-line text-muted">BlackBox Sentinel Autonomous Edge Defense Node (AEDN-RACK-01)</div>
+                        <div class="term-line text-green">All services running: sentinel-bridge, sentinel-core, sentinel-gui.</div>
+                        <div class="term-line text-muted">Type 'help' or 'commands' for available appliance diagnostic utilities.</div>
+                    </div>
+                    <div class="term-prompt-line">
+                        <span class="term-user-host">sentinel@ubuntu-sentinel</span><span class="term-colon">:</span><span class="term-dir">~</span><span class="term-dollar">$</span>
+                        <input type="text" id="term-cli-input" autofocus autocomplete="off" onkeydown="handleTerminalCommand(event)">
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════════════════════ -->
+            <!-- APP WINDOW 6: UBUNTU SETTINGS & SECURITY VAULT                 -->
+            <!-- ══════════════════════════════════════════════════════════════ -->
+            <div class="gnome-window" id="win-settings">
+                <div class="win-titlebar" onmousedown="startDrag(event, 'win-settings')">
+                    <div class="win-title">
+                        <span class="win-app-icon">⚙️</span>
+                        <span>Settings &bull; Security &amp; Kernel Hardening</span>
+                    </div>
+                    <div class="win-controls">
+                        <button class="win-btn win-min" onclick="minimizeApp('settings')">🗕</button>
+                        <button class="win-btn win-max" onclick="toggleMaximize('win-settings')">🗖</button>
+                        <button class="win-btn win-close" onclick="closeApp('settings')">✕</button>
+                    </div>
+                </div>
+                <div class="win-content settings-layout">
+                    <div class="settings-sidebar">
+                        <div class="settings-nav-item active">🛡️ Security &amp; Vault</div>
+                        <div class="settings-nav-item">🖧 Network &amp; Bridge</div>
+                        <div class="settings-nav-item">🖥️ Touch Display (800x480)</div>
+                        <div class="settings-nav-item">ℹ️ About Appliance</div>
+                    </div>
+                    <div class="settings-main-pane">
+                        <h3 class="pane-title">Cryptographic Key Vault &amp; Kernel Protections</h3>
+                        
+                        <div class="setting-row">
+                            <div>
+                                <strong>Volatile RAM Keystore (/run/sentinel/keys)</strong>
+                                <p>Keys stored in non-persistent tmpfs RAM only. Wiped instantly on physical tamper.</p>
+                            </div>
+                            <span class="badge-status text-green">ACTIVE (tmpfs)</span>
+                        </div>
+
+                        <div class="setting-row">
+                            <div>
+                                <strong>TCP SYN Cookies &amp; Reverse Path Filtering</strong>
+                                <p>Kernel level flood mitigation configured in /etc/sysctl.d/99-sentinel.conf</p>
+                            </div>
+                            <span class="badge-status text-green">ENFORCED</span>
+                        </div>
+
+                        <div class="setting-row">
+                            <div>
+                                <strong>Transparent Inline Layer-2 Bridge</strong>
+                                <p>Interface <code>br0</code> binding physical ports <code>eth0</code> and <code>eth1</code>.</p>
+                            </div>
+                            <span class="badge-status text-green">CONNECTED</span>
+                        </div>
+
+                        <div class="zeroization-danger-box">
+                            <h4>🔥 EMERGENCY ZEROIZATION PROTOCOL</h4>
+                            <p>Instantly overwrite and zeroize all cryptographic AES keys in volatile memory, drop network interface bridge, and permanently isolate the physical relay.</p>
+                            <button class="btn-ubuntu btn-danger" onclick="triggerTamperAlert()">
+                                EXECUTE MASTER ZEROIZATION
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <!-- 3. AUTONOMOUS AIR-GAP LOCKDOWN SYSTEM ALERT OVERLAY                    -->
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <div id="airgap-lockdown-modal" class="">
+        <div class="lockdown-dialog">
+            <div class="dialog-header">
+                <div class="siren-icon">🚨</div>
+                <div class="dialog-title-text">
+                    <h2>SYSTEM ALERT: AIR-GAP CONTAINMENT TRIGGERED</h2>
+                    <p>Mechanical data relay severed in 0.04ms &bull; Threat isolated</p>
+                </div>
+            </div>
+            <div class="dialog-body">
+                <div class="threat-detail-box">
+                    <div class="detail-row">
+                        <span class="lbl">Detected Threat Vector:</span>
+                        <strong class="text-red" id="modal-threat-name">ROGUE C2 DATA EXFILTRATION</strong>
+                    </div>
+                    <div class="detail-row">
+                        <span class="lbl">Isolation Forest Score:</span>
+                        <strong class="text-red" id="modal-anomaly-score">-0.088 (Spike past threshold)</strong>
+                    </div>
+                    <div class="detail-row">
+                        <span class="lbl">Hardware Relay Status:</span>
+                        <strong class="text-red">ISOLATED / AIR-GAPPED (Physical line broken)</strong>
+                    </div>
+                    <div class="detail-row">
+                        <span class="lbl">SHA-256 Ledger Receipt:</span>
+                        <code class="text-purple" id="modal-ledger-hash">c68a975a29de2ccd01efd32b1f079...</code>
+                    </div>
+                    <div class="detail-row">
+                        <span class="lbl">Out-of-Band Notification:</span>
+                        <strong class="text-green">SMS Sent to Admin (+919876543210) &bull; ESP-NOW Gossiped</strong>
+                    </div>
+                </div>
+
+                <div class="override-pin-section">
+                    <p class="pin-prompt">Enter Administrator Sudo PIN to restore physical data connection:</p>
+                    <div class="pin-display-row">
+                        <input type="password" id="modal-pin-input" readonly placeholder="••••">
+                    </div>
+                    <div class="modal-numpad">
+                        <button onclick="pressModalPin('1')">1</button>
+                        <button onclick="pressModalPin('2')">2</button>
+                        <button onclick="pressModalPin('3')">3</button>
+                        <button onclick="pressModalPin('4')">4</button>
+                        <button onclick="pressModalPin('5')">5</button>
+                        <button onclick="pressModalPin('6')">6</button>
+                        <button onclick="pressModalPin('7')">7</button>
+                        <button onclick="pressModalPin('8')">8</button>
+                        <button onclick="pressModalPin('9')">9</button>
+                        <button class="key-sub" onclick="clearModalPin()">CLR</button>
+                        <button onclick="pressModalPin('0')">0</button>
+                        <button class="key-ok" onclick="submitModalPin()">ENGAGE</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- GNOME Notification Toast -->
+    <div id="gnome-toast" class="gnome-toast"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

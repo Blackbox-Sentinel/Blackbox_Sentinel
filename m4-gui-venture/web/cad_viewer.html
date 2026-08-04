@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlackBox Sentinel — Web 3D CAD Hardware Studio</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Ubuntu+Mono:wght@400;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Three.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <link rel="stylesheet" href="cad_viewer.css">
+</head>
+<body>
+
+    <!-- ── Header Bar ──────────────────────────────────────────────────────── -->
+    <header id="cad-header">
+        <div class="header-left">
+            <a href="/" class="nav-back-btn" title="Back to Ubuntu OS">◀ Ubuntu Desktop</a>
+            <a href="/simulator.html" class="nav-back-btn" title="Open Schematic Simulator">⚡ Circuit Schematic</a>
+            <div class="header-title-box">
+                <h1>BlackBox Sentinel &bull; 3D CAD Hardware Studio</h1>
+                <span class="badge-cad">RPI-4 &bull; 140×100×55mm &bull; 3-TIER SANDWICH</span>
+            </div>
+        </div>
+
+        <div class="header-center">
+            <div class="view-preset-group">
+                <button class="preset-btn active" onclick="setPresetView('iso')">Isometric</button>
+                <button class="preset-btn" onclick="setPresetView('top')">Top</button>
+                <button class="preset-btn" onclick="setPresetView('front')">Front</button>
+                <button class="preset-btn" onclick="setPresetView('side')">Side</button>
+            </div>
+        </div>
+
+        <div class="header-right">
+            <button class="btn-cad-primary" onclick="toggleAutoRotate()" id="btn-rotate">🔄 Auto-Rotate: ON</button>
+            <button class="btn-cad-secondary" onclick="resetCamera()">🎯 Reset View</button>
+        </div>
+    </header>
+
+    <!-- ── Main Workspace ─────────────────────────────────────────────────── -->
+    <div id="cad-workspace">
+
+        <!-- Left Controls & Layer Panel -->
+        <aside id="cad-sidebar-left">
+            <!-- Explode View Control Card -->
+            <div class="cad-card">
+                <div class="card-header">
+                    <span class="icon">💥</span>
+                    <h3>EXPLODED CAD ASSEMBLY</h3>
+                </div>
+                <div class="explode-control-row">
+                    <label>Separation Distance:</label>
+                    <span class="explode-val" id="explode-percent">0%</span>
+                </div>
+                <input type="range" id="explode-slider" min="0" max="100" value="0" oninput="onExplodeSlider(this.value)">
+                <div class="quick-explode-btns">
+                    <button class="btn-sm" onclick="animateExplodeTo(0)">Assembled</button>
+                    <button class="btn-sm" onclick="animateExplodeTo(50)">50% Spaced</button>
+                    <button class="btn-sm" onclick="animateExplodeTo(100)">Fully Exploded</button>
+                </div>
+            </div>
+
+            <!-- Visual Rendering Modes -->
+            <div class="cad-card">
+                <div class="card-header">
+                    <span class="icon">👁️</span>
+                    <h3>RENDER MODES</h3>
+                </div>
+                <div class="render-modes-grid">
+                    <button class="mode-btn active" id="btn-mode-solid" onclick="setRenderMode('solid')">
+                        <span class="m-icon">🎨</span> Solid PBR
+                    </button>
+                    <button class="mode-btn" id="btn-mode-xray" onclick="setRenderMode('xray')">
+                        <span class="m-icon">🩻</span> X-Ray Shell
+                    </button>
+                    <button class="mode-btn" id="btn-mode-wire" onclick="setRenderMode('wire')">
+                        <span class="m-icon">📐</span> Wireframe
+                    </button>
+                    <button class="mode-btn" id="btn-mode-clay" onclick="setRenderMode('clay')">
+                        <span class="m-icon">🏺</span> 3D Print Clay
+                    </button>
+                </div>
+                <div class="toggle-row">
+                    <label><input type="checkbox" id="chk-dimensions" checked onchange="toggleDimensions(this.checked)"> Show Dimensions (mm)</label>
+                </div>
+                <div class="toggle-row">
+                    <label><input type="checkbox" id="chk-grid" checked onchange="toggleGrid(this.checked)"> Show Ground Grid</label>
+                </div>
+            </div>
+
+            <!-- Live Hardware Interactive Triggers -->
+            <div class="cad-card">
+                <div class="card-header">
+                    <span class="icon">⚡</span>
+                    <h3>LIVE 3D HARDWARE CONTROLS</h3>
+                </div>
+                <div class="quick-explode-btns" style="display:flex; flex-direction:column; gap:8px;">
+                    <button class="btn-sm" style="background:#e95420; color:white; font-weight:600;" onclick="trigger3DRelay()">⚡ Toggle Relay Air-Gap (Cut LAN)</button>
+                    <button class="btn-sm" style="background:#df382c; color:white; font-weight:600;" onclick="trigger3DTamper()">🚨 Trigger Tamper Breach (Zeroize)</button>
+                </div>
+            </div>
+
+            <!-- CAD Assembly Tree (Layers) -->
+            <div class="cad-card flex-fill">
+                <div class="card-header">
+                    <span class="icon">📑</span>
+                    <h3>ASSEMBLY TREE</h3>
+                </div>
+                <div class="tree-container">
+                    <div class="tree-item" onclick="selectComponent('topLid')">
+                        <span class="tree-bullet" style="color: #4a4a4a;">■</span>
+                        <span>Top Enclosure Lid (PETG)</span>
+                    </div>
+                    <div class="tree-item" onclick="selectComponent('screen')">
+                        <span class="tree-bullet" style="color: #00a3e0;">■</span>
+                        <span>5.0" Capacitive Touchscreen</span>
+                    </div>
+                    <div class="tree-item" onclick="selectComponent('chassisWalls')">
+                        <span class="tree-bullet" style="color: #666666;">■</span>
+                        <span>Unibody Chassis &amp; Vents</span>
+                    </div>
+                    <div class="tree-item" onclick="selectComponent('tamper')">
+                        <span class="tree-bullet" style="color: #e95420;">■</span>
+                        <span>Copper Anti-Tamper Grid</span>
+                    </div>
+                    <div class="tree-item" onclick="selectComponent('pi4')">
+                        <span class="tree-bullet" style="color: #38b44a;">■</span>
+                        <span>Raspberry Pi 4 (SoC + Ports)</span>
+                    </div>
+                    <div class="tree-item" onclick="selectComponent('heatsink')">
+                        <span class="tree-bullet" style="color: #2b78e4;">■</span>
+                        <span>Aluminum Armor Heatsink</span>
+                    </div>
+                    <div class="tree-item" onclick="selectComponent('esp32')">
+                        <span class="tree-bullet" style="color: #9b59b6;">■</span>
+                        <span>ESP32-S3 Co-Processor</span>
+                    </div>
+                    <div class="tree-item" onclick="selectComponent('relay')">
+                        <span class="tree-bullet" style="color: #0e52a8;">■</span>
+                        <span>Songle 5V Relay Module</span>
+                    </div>
+                    <div class="tree-item" onclick="selectComponent('sim800')">
+                        <span class="tree-bullet" style="color: #df382c;">■</span>
+                        <span>SIM800L Cellular Modem + Cap</span>
+                    </div>
+                    <div class="tree-item" onclick="selectComponent('battery')">
+                        <span class="tree-bullet" style="color: #008080;">■</span>
+                        <span>Dual 18650 Battery PMIC</span>
+                    </div>
+                    <div class="tree-item" onclick="selectComponent('bottomCase')">
+                        <span class="tree-bullet" style="color: #333333;">■</span>
+                        <span>Bottom Chassis Base &amp; Feet</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Center 3D WebGL Canvas -->
+        <main id="cad-canvas-container">
+            <canvas id="webgl-canvas"></canvas>
+            <div id="loading-overlay">
+                <div class="spinner"></div>
+                <p>Generating 3D Parametric CAD Geometry...</p>
+            </div>
+
+            <!-- Viewport Overlay HUD -->
+            <div class="viewport-hud">
+                <div class="hud-item">
+                    <span class="hud-label">APPLIANCE SIZE:</span>
+                    <span class="hud-val">140 × 100 × 55 mm</span>
+                </div>
+                <div class="hud-item">
+                    <span class="hud-label">PROCESSOR:</span>
+                    <span class="hud-val">Broadcom BCM2711 (Quad Cortex-A72)</span>
+                </div>
+                <div class="hud-item">
+                    <span class="hud-label">TOTAL VOLUME:</span>
+                    <span class="hud-val">0.77 Liters</span>
+                </div>
+                <div class="hud-item">
+                    <span class="hud-label">EST. WEIGHT:</span>
+                    <span class="hud-val">~420g (with 2x 18650 cells)</span>
+                </div>
+            </div>
+
+            <!-- Instructions Toast -->
+            <div class="viewport-tips">
+                <span>🖱️ <strong>Left Click + Drag</strong> to Orbit</span> &bull; 
+                <span>🖱️ <strong>Right Click + Drag</strong> to Pan</span> &bull; 
+                <span>🖱️ <strong>Scroll</strong> to Zoom</span> &bull; 
+                <span>👆 <strong>Click any part</strong> to Inspect</span>
+            </div>
+        </main>
+
+        <!-- Right Engineering Inspection Sheet -->
+        <aside id="cad-sidebar-right">
+            <div class="cad-card">
+                <div class="card-header">
+                    <span class="icon">🔍</span>
+                    <h3 id="inspect-title">COMPONENT INSPECTOR</h3>
+                </div>
+                <div id="inspect-content">
+                    <div class="placeholder-msg">
+                        <span style="font-size: 32px; display: block; margin-bottom: 8px;">📦</span>
+                        Click on any component in the 3D viewport or assembly tree to inspect its CAD specs, pinouts, and 3D print clearances.
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3D Print Stacking & Fabrication Specs -->
+            <div class="cad-card flex-fill">
+                <div class="card-header">
+                    <span class="icon">🖨️</span>
+                    <h3>3D PRINTING &amp; FABRICATION</h3>
+                </div>
+                <div class="fab-specs-list">
+                    <div class="spec-row">
+                        <span class="spec-lbl">Recommended Filament:</span>
+                        <span class="spec-val">PETG or ABS (Flame Retardant)</span>
+                    </div>
+                    <div class="spec-row">
+                        <span class="spec-lbl">Layer Height:</span>
+                        <span class="spec-val">0.20mm (0.4mm Nozzle)</span>
+                    </div>
+                    <div class="spec-row">
+                        <span class="spec-lbl">Infill Density:</span>
+                        <span class="spec-val">30% Gyroid</span>
+                    </div>
+                    <div class="spec-row">
+                        <span class="spec-lbl">Standoff Fasteners:</span>
+                        <span class="spec-val">M2.5 Nylon Screws &amp; 12mm Spacers</span>
+                    </div>
+                    <div class="spec-row">
+                        <span class="spec-lbl">Airflow Clearance:</span>
+                        <span class="spec-val">12mm chimney convection gap</span>
+                    </div>
+                </div>
+
+                <div class="action-buttons-wrap">
+                    <button class="btn-cad-primary full-width" onclick="exportCADReport()">
+                        📄 Export Hardware Bill of Materials (BOM)
+                    </button>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script src="cad_viewer.js"></script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -7,7 +7,12 @@ dist/
 build/
 .eggs/
 *.egg
+
+# Virtual Environments
 venv/
+.venv/
+env/
+ENV/
 .env
 
 # Arduino / PlatformIO
@@ -15,24 +20,33 @@ venv/
 .pioenvs/
 .piolibdeps/
 
-# ML artifacts (large files)
+# ML artifacts & runtime data (keep source code & seed models only)
 *.pkl
 *.h5
 *.pt
 *.onnx
-m3-ml-ledger/models/*.joblib
-m3-ml-ledger/data/*.pcap
+*.pcap
+m3-ml-ledger/data/gui_ledger.json
+m3-ml-ledger/data/hw_sim_ledger.json
+m3-ml-ledger/data/sentinel_ledger.json
+m3-ml-ledger/data/sim_sentinel_ledger.json
+m3-ml-ledger/models/device_state.json
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+# Temporary keys / runtime scratch
+scratch_gui_keys/
+.tempmediaStorage/
+*.tmp
+*.bak
 
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Logs
 *.log
+
+# OS Generated
+.DS_Store
+Thumbs.db
+desktop.ini

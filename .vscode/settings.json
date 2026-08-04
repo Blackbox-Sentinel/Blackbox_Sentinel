@@ -1,0 +1,32 @@
+{
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}",
+        "${workspaceFolder}/common",
+        "${workspaceFolder}/m1-hardware",
+        "${workspaceFolder}/m2-systems",
+        "${workspaceFolder}/m3-ml-ledger",
+        "${workspaceFolder}/m4-gui-venture"
+    ],
+    "python.testing.pytestArgs": [
+        "."
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/.pytest_cache": true,
+        "**/*.pyc": true
+    },
+    "liveshare.sharedPorts": [
+        {
+            "port": 8080,
+            "privacy": "public",
+            "description": "BlackBox Sentinel Ubuntu Kiosk OS & 3D CAD Studio"
+        },
+        {
+            "port": 5000,
+            "privacy": "public",
+            "description": "Sentinel Defense REST API Server"
+        }
+    ]
+}
