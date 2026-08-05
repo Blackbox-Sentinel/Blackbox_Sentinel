@@ -1,0 +1,14 @@
+[Unit]
+Description=BlackBox Sentinel Transparent Network Bridge
+Before=network.target sentinel-core.service
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/blackbox-sentinel/m2-systems/os/setup_network_bridge.sh eth0 eth1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target sentinel.target

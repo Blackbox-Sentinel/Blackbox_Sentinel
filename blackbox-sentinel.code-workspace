@@ -1,0 +1,39 @@
+{
+    "folders": [
+        {
+            "name": "🛡️ BlackBox Sentinel (Root)",
+            "path": "."
+        },
+        {
+            "name": "🔌 M1 • Hardware & HAL",
+            "path": "m1-hardware"
+        },
+        {
+            "name": "🖥️ M2 • Systems & Bridge",
+            "path": "m2-systems"
+        },
+        {
+            "name": "🧠 M3 • ML & Immutable Ledger",
+            "path": "m3-ml-ledger"
+        },
+        {
+            "name": "🌐 M4 • Ubuntu GUI & 3D CAD Studio",
+            "path": "m4-gui-venture"
+        }
+    ],
+    "settings": {
+        "python.analysis.autoImportCompletions": true,
+        "python.analysis.typeCheckingMode": "basic",
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true,
+        "editor.tabSize": 4,
+        "editor.formatOnSave": true,
+        "explorer.fileNesting.enabled": true,
+        "explorer.fileNesting.patterns": {
+            "*.py": "${capture}.pyc, ${capture}.pyo",
+            "*.html": "${capture}.css, ${capture}.js",
+            "README.md": "README.*.md, CHANGELOG.md"
+        },
+        "terminal.integrated.defaultProfile.windows": "PowerShell"
+    }
+}

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlackBox Sentinel — Visual Hardware Simulator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&family=Ubuntu+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="simulator.css">
+</head>
+<body>
+
+    <!-- Top Control Bar -->
+    <header id="sim-topbar">
+        <div class="topbar-brand">
+            <a href="/" class="ctrl-btn btn-secondary" style="text-decoration:none;" title="Open Ubuntu OS">◀ Ubuntu Desktop</a>
+            <a href="/cad_viewer.html" class="ctrl-btn btn-primary" style="text-decoration:none;" title="Open 3D CAD Studio">📐 3D CAD Studio</a>
+            <span class="brand-icon">⚙️</span>
+            <span class="brand-title">BlackBox Sentinel — Interactive Hardware Simulator</span>
+            <span class="brand-sub">Digital Twin &bull; AEDN-RACK-01 &bull; HARDWARE=sim</span>
+        </div>
+        <div class="topbar-controls">
+            <button class="ctrl-btn btn-primary" onclick="apiAction('auto_demo')" title="Run complete 6-phase lifecycle">▶ Run Full Demo</button>
+            <button class="ctrl-btn btn-secondary" onclick="apiAction('calibrate')">1. Calibrate</button>
+            <button class="ctrl-btn btn-secondary" onclick="apiAction('monitor')">2. Monitor</button>
+            <button class="ctrl-btn btn-danger" onclick="apiAction('attack&type=EXFILTRATION')">3. Attack (C2)</button>
+            <button class="ctrl-btn btn-success" onclick="apiAction('pin_override&pin=1234')">4. PIN Override</button>
+            <button class="ctrl-btn btn-danger" onclick="apiAction('tamper')">5. Tamper</button>
+            <button class="ctrl-btn btn-secondary" onclick="apiAction('audit')">6. Audit</button>
+        </div>
+    </header>
+
+    <main id="simulator-workspace">
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- LEFT: HARDWARE SCHEMATIC VIEW                                  -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <section class="schematic-panel">
+            <h2 class="panel-title">Hardware Schematic (Live State)</h2>
+
+            <div class="hw-schematic">
+
+                <!-- Row 1: Pi + Bridge + Relay + Network -->
+                <div class="schematic-row main-row">
+
+                    <!-- Eth0 In -->
+                    <div class="hw-chip chip-eth" id="chip-eth0">
+                        <div class="chip-label">ETH0 (IN)</div>
+                        <div class="chip-icon">🔌</div>
+                        <div class="chip-status" id="eth0-status">UP</div>
+                    </div>
+
+                    <!-- Wire -->
+                    <div class="wire wire-h" id="wire-eth0-bridge">
+                        <div class="wire-line"></div>
+                        <div class="wire-flow" id="flow-eth0"></div>
+                    </div>
+
+                    <!-- Raspberry Pi Zero 2W -->
+                    <div class="hw-chip chip-pi" id="chip-pi">
+                        <div class="chip-header">
+                            <span class="chip-icon-sm">🍓</span>
+                            <span>Raspberry Pi Zero 2W</span>
+                        </div>
+                        <div class="pi-inner">
+                            <div class="pi-module">
+                                <div class="module-label">Bridge br0</div>
+                                <div class="module-val" id="pi-bridge-state">ACTIVE</div>
+                            </div>
+                            <div class="pi-module">
+                                <div class="module-label">Isolation Forest</div>
+                                <div class="module-val" id="pi-ml-state">IDLE</div>
+                            </div>
+                            <div class="pi-module">
+                                <div class="module-label">SHA-256 Ledger</div>
+                                <div class="module-val" id="pi-ledger-count">0 blocks</div>
+                            </div>
+                            <div class="pi-module">
+                                <div class="module-label">Packets</div>
+                                <div class="module-val" id="pi-pkt-count">0</div>
+                            </div>
+                        </div>
+                        <div class="pi-gpio-bar">
+                            <span class="gpio-pin" title="GPIO 17 (Relay)">17</span>
+                            <span class="gpio-pin" title="GPIO 27 (Tamper)">27</span>
+                            <span class="gpio-pin" title="GPIO 22 (Tamper)">22</span>
+                            <span class="gpio-pin" title="UART TX (SIM800L)">TX</span>
+                            <span class="gpio-pin" title="UART RX (SIM800L)">RX</span>
+                        </div>
+                    </div>
+
+                    <!-- Wire to Relay -->
+                    <div class="wire wire-h" id="wire-bridge-relay">
+                        <div class="wire-line"></div>
+                        <div class="wire-flow" id="flow-relay"></div>
+                    </div>
+
+                    <!-- 5V Relay Module -->
+                    <div class="hw-chip chip-relay" id="chip-relay">
+                        <div class="chip-label">5V RELAY</div>
+                        <div class="relay-visual">
+                            <div class="relay-coil" id="relay-coil">
+                                <div class="coil-spring"></div>
+                            </div>
+                            <div class="relay-arm" id="relay-arm"></div>
+                            <div class="relay-contact" id="relay-contact"></div>
+                        </div>
+                        <div class="chip-status" id="relay-status">ENGAGED</div>
+                        <div class="chip-sub">GPIO 17 &bull; BCM</div>
+                    </div>
+
+                    <!-- Wire to Eth1 -->
+                    <div class="wire wire-h" id="wire-relay-eth1">
+                        <div class="wire-line" id="wire-eth1-line"></div>
+                        <div class="wire-flow" id="flow-eth1"></div>
+                    </div>
+
+                    <!-- Eth1 Out -->
+                    <div class="hw-chip chip-eth" id="chip-eth1">
+                        <div class="chip-label">ETH1 (OUT)</div>
+                        <div class="chip-icon">🔌</div>
+                        <div class="chip-status" id="eth1-status">UP</div>
+                    </div>
+                </div>
+
+                <!-- Row 2: GPIO Peripherals -->
+                <div class="schematic-row peripherals-row">
+
+                    <!-- Status LED -->
+                    <div class="hw-chip chip-led">
+                        <div class="chip-label">STATUS LED</div>
+                        <div class="led-bulb" id="led-bulb"></div>
+                        <div class="chip-status" id="led-status">OFF</div>
+                    </div>
+
+                    <!-- Wire down from Pi -->
+                    <div class="wire wire-v-spacer"></div>
+
+                    <!-- ESP32-S3 -->
+                    <div class="hw-chip chip-esp32" id="chip-esp32">
+                        <div class="chip-header">
+                            <span class="chip-icon-sm">📡</span>
+                            <span>ESP32-S3 Co-Processor</span>
+                        </div>
+                        <div class="esp-inner">
+                            <div class="pi-module">
+                                <div class="module-label">ESP-NOW Mesh</div>
+                                <div class="module-val" id="esp-mesh-state">LISTENING</div>
+                            </div>
+                            <div class="pi-module">
+                                <div class="module-label">Broadcasts</div>
+                                <div class="module-val" id="esp-broadcast-count">0</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Spacer -->
+                    <div class="wire wire-v-spacer"></div>
+
+                    <!-- Anti-Tamper Grid -->
+                    <div class="hw-chip chip-tamper" id="chip-tamper">
+                        <div class="chip-label">ANTI-TAMPER GRID</div>
+                        <div class="tamper-visual">
+                            <div class="tamper-grid" id="tamper-grid">
+                                <div class="grid-wire gw-h"></div>
+                                <div class="grid-wire gw-h"></div>
+                                <div class="grid-wire gw-v"></div>
+                                <div class="grid-wire gw-v"></div>
+                            </div>
+                        </div>
+                        <div class="chip-status" id="tamper-status">CONTINUOUS</div>
+                        <div class="chip-sub">GPIO 27 + 22</div>
+                    </div>
+
+                    <!-- Spacer -->
+                    <div class="wire wire-v-spacer"></div>
+
+                    <!-- SIM800L -->
+                    <div class="hw-chip chip-sim800l" id="chip-sim800l">
+                        <div class="chip-header">
+                            <span class="chip-icon-sm">📱</span>
+                            <span>SIM800L GSM Modem</span>
+                        </div>
+                        <div class="pi-module">
+                            <div class="module-label">Network</div>
+                            <div class="module-val" id="sim-network">2G REGISTERED</div>
+                        </div>
+                        <div class="pi-module">
+                            <div class="module-label">SMS Sent</div>
+                            <div class="module-val" id="sim-sms-count">0</div>
+                        </div>
+                    </div>
+
+                    <!-- Keystore -->
+                    <div class="hw-chip chip-keystore" id="chip-keystore">
+                        <div class="chip-label">RAM KEYSTORE</div>
+                        <div class="chip-icon" id="keystore-icon">🔐</div>
+                        <div class="chip-status" id="keystore-status">MOUNTED</div>
+                        <div class="chip-sub">/run/sentinel/keys (tmpfs)</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <!-- RIGHT: LIVE TELEMETRY & EVENT LOG                              -->
+        <!-- ═══════════════════════════════════════════════════════════════ -->
+        <aside class="telemetry-panel">
+
+            <!-- Device State Badge -->
+            <div class="state-badge-card" id="state-badge-card">
+                <div class="state-ring" id="state-ring"></div>
+                <div>
+                    <div class="state-name" id="state-name">IDLE</div>
+                    <div class="state-phase" id="state-phase">Phase: BOOT</div>
+                </div>
+            </div>
+
+            <!-- Anomaly Score Gauge -->
+            <div class="telemetry-card">
+                <div class="card-title">Isolation Forest Score</div>
+                <div class="score-display">
+                    <span class="score-value" id="live-score">0.000</span>
+                    <span class="score-label" id="score-verdict">IDLE</span>
+                </div>
+                <div class="mini-graph-wrap">
+                    <canvas id="score-mini-canvas" width="280" height="60"></canvas>
+                </div>
+            </div>
+
+            <!-- Metrics Row -->
+            <div class="metrics-row">
+                <div class="mini-metric">
+                    <div class="mm-val" id="mm-pkts">0</div>
+                    <div class="mm-label">Packets</div>
+                </div>
+                <div class="mini-metric">
+                    <div class="mm-val text-red" id="mm-anomalies">0</div>
+                    <div class="mm-label">Anomalies</div>
+                </div>
+                <div class="mini-metric">
+                    <div class="mm-val text-purple" id="mm-blocks">0</div>
+                    <div class="mm-label">Ledger Blocks</div>
+                </div>
+                <div class="mini-metric">
+                    <div class="mm-val text-cyan" id="mm-sms">0</div>
+                    <div class="mm-label">SMS Alerts</div>
+                </div>
+            </div>
+
+            <!-- Calibration Progress -->
+            <div class="telemetry-card" id="calibration-card" style="display:none;">
+                <div class="card-title">Baseline Calibration Progress</div>
+                <div class="progress-bar-track">
+                    <div class="progress-bar-fill" id="cal-progress-fill"></div>
+                </div>
+                <div class="progress-label" id="cal-progress-label">0 / 120 samples</div>
+            </div>
+
+            <!-- Event Log -->
+            <div class="telemetry-card event-log-card">
+                <div class="card-title">System Event Log</div>
+                <div class="event-log-scroll" id="event-log-scroll">
+                    <div class="log-line log-info">[BOOT] Waiting for simulation start...</div>
+                </div>
+            </div>
+
+            <!-- Ledger Chain Preview -->
+            <div class="telemetry-card">
+                <div class="card-title">SHA-256 Ledger Chain (Latest Blocks)</div>
+                <div class="ledger-mini-list" id="ledger-mini-list">
+                    <div class="ledger-mini-item">No blocks yet.</div>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <script src="simulator.js"></script>
+</body>
+</html>

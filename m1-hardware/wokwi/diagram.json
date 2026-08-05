@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "author": "BlackBox Sentinel M1 Team",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-relay-module",
+      "id": "relay1",
+      "top": -80,
+      "left": 250,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_green",
+      "top": 120,
+      "left": 250,
+      "attrs": { "color": "green", "label": "ARMED" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_red",
+      "top": 180,
+      "left": 250,
+      "attrs": { "color": "red", "label": "ALERT" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_blue",
+      "top": 240,
+      "left": 250,
+      "attrs": { "color": "blue", "label": "MESH" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn_tamper",
+      "top": -40,
+      "left": -180,
+      "attrs": { "color": "red", "label": "TAMPER GRID" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": 140,
+      "left": 180,
+      "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r2",
+      "top": 200,
+      "left": 180,
+      "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r3",
+      "top": 260,
+      "left": 180,
+      "attrs": { "value": "220" }
+    }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "esp:GND.1", "relay1:GND", "black", [ "v0" ] ],
+    [ "esp:5V", "relay1:VCC", "red", [ "v0" ] ],
+    [ "esp:18", "relay1:IN", "orange", [ "v0" ] ],
+    [ "esp:2", "r1:1", "green", [ "v0" ] ],
+    [ "r1:2", "led_green:A", "green", [ "v0" ] ],
+    [ "led_green:C", "esp:GND.1", "black", [ "v0" ] ],
+    [ "esp:4", "r2:1", "red", [ "v0" ] ],
+    [ "r2:2", "led_red:A", "red", [ "v0" ] ],
+    [ "led_red:C", "esp:GND.1", "black", [ "v0" ] ],
+    [ "esp:5", "r3:1", "blue", [ "v0" ] ],
+    [ "r3:2", "led_blue:A", "blue", [ "v0" ] ],
+    [ "led_blue:C", "esp:GND.1", "black", [ "v0" ] ],
+    [ "btn_tamper:1.l", "esp:27", "purple", [ "v0" ] ],
+    [ "btn_tamper:2.l", "esp:GND.2", "black", [ "v0" ] ]
+  ],
+  "dependencies": {}
+}

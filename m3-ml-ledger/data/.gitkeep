@@ -1,0 +1,3 @@
+# Sample data placeholder
+# Place .pcap capture files here for ML training.
+# Run M2's capture.py to generate pcap files automatically.

@@ -1,6 +1,55 @@
+# Python & Bytecode
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual Environments
 venv/
 .venv/
+env/
+ENV/
+.env
+
+# Arduino / PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# ML artifacts & runtime data (seed models in repo are tracked, runtime datasets ignored)
+*.h5
+*.pt
+*.onnx
+*.pcap
 ml/model.pkl
 ml/traffic.csv
+m3-ml-ledger/data/gui_ledger.json
+m3-ml-ledger/data/hw_sim_ledger.json
+m3-ml-ledger/data/sentinel_ledger.json
+m3-ml-ledger/data/sim_sentinel_ledger.json
+m3-ml-ledger/models/device_state.json
+
+# Temporary keys / runtime scratch
+scratch_gui_keys/
+.tempmediaStorage/
+*.tmp
+*.bak
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs & Agent Mesh Activity
+*.log
+.agent_mesh/*.log
+.agent_mesh/*.tmp
+
+# OS Generated
+.DS_Store
+Thumbs.db
+desktop.ini
