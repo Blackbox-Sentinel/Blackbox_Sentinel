@@ -1,0 +1,591 @@
+/* ==============================================================================
+   BLACKBOX SENTINEL — VISUAL HARDWARE SIMULATOR STYLESHEET
+   Interactive schematic view with live component state visualization
+   ============================================================================== */
+
+:root {
+    --bg-body: #0f1117;
+    --bg-panel: #181c24;
+    --bg-card: #1e2330;
+    --bg-chip: #232938;
+    --border: #2d3548;
+    --border-active: #E95420;
+    --text-main: #e8eaf0;
+    --text-muted: #8a91a4;
+    --orange: #E95420;
+    --green: #38b44a;
+    --green-glow: 0 0 12px rgba(56, 180, 74, 0.5);
+    --red: #df382c;
+    --red-glow: 0 0 14px rgba(223, 56, 44, 0.6);
+    --blue: #00a3e0;
+    --purple: #9b59b6;
+    --amber: #f39c12;
+    --font: 'Ubuntu', sans-serif;
+    --mono: 'Ubuntu Mono', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    background: var(--bg-body);
+    color: var(--text-main);
+    font-family: var(--font);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+}
+
+/* ── Top Control Bar ──────────────────────────────────────────────────── */
+#sim-topbar {
+    height: 52px;
+    background: #111318;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 16px;
+    z-index: 100;
+}
+
+.topbar-brand { display: flex; align-items: center; gap: 10px; }
+.brand-icon { font-size: 20px; }
+.brand-title { font-size: 14px; font-weight: 700; }
+.brand-sub { font-size: 11px; color: var(--text-muted); font-family: var(--mono); }
+
+.topbar-controls { display: flex; gap: 6px; }
+
+.ctrl-btn {
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.ctrl-btn:active { transform: scale(0.96); }
+.btn-primary { background: var(--orange); color: #fff; border-color: var(--orange); }
+.btn-primary:hover { background: #f06a38; }
+.btn-secondary { background: #2a2f3c; color: var(--text-main); }
+.btn-secondary:hover { background: #363d4f; }
+.btn-danger { background: rgba(223, 56, 44, 0.2); color: var(--red); border-color: rgba(223, 56, 44, 0.5); }
+.btn-danger:hover { background: var(--red); color: #fff; }
+.btn-success { background: rgba(56, 180, 74, 0.2); color: var(--green); border-color: rgba(56, 180, 74, 0.5); }
+.btn-success:hover { background: var(--green); color: #fff; }
+
+/* ── Main Layout ──────────────────────────────────────────────────────── */
+#simulator-workspace {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 0;
+    overflow: hidden;
+}
+
+.schematic-panel {
+    padding: 16px;
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+}
+
+.telemetry-panel {
+    padding: 12px;
+    overflow-y: auto;
+    background: var(--bg-panel);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.panel-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--orange);
+    margin-bottom: 12px;
+    letter-spacing: 0.5px;
+}
+
+/* ── Hardware Schematic ───────────────────────────────────────────────── */
+.hw-schematic {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.schematic-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    justify-content: center;
+}
+
+.peripherals-row {
+    justify-content: space-around;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+/* ── Hardware Chips (Components) ──────────────────────────────────────── */
+.hw-chip {
+    background: var(--bg-chip);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    text-align: center;
+    position: relative;
+    transition: all 0.3s;
+    min-width: 100px;
+}
+
+.chip-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+    font-family: var(--mono);
+}
+
+.chip-icon { font-size: 28px; margin: 4px 0; }
+.chip-icon-sm { font-size: 16px; }
+.chip-status {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    margin-top: 4px;
+}
+
+.chip-sub {
+    font-size: 9px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+}
+
+.chip-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+/* Raspberry Pi Chip */
+.chip-pi {
+    min-width: 220px;
+    border-color: var(--green);
+    background: linear-gradient(135deg, #1a2612 0%, var(--bg-chip) 100%);
+}
+
+.pi-inner {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.pi-module {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 4px;
+    padding: 4px 6px;
+    text-align: left;
+}
+
+.module-label { font-size: 8px; color: var(--text-muted); font-family: var(--mono); }
+.module-val { font-size: 11px; font-weight: 700; font-family: var(--mono); color: var(--green); }
+
+.pi-gpio-bar {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.gpio-pin {
+    background: #333;
+    border: 1px solid #555;
+    border-radius: 2px;
+    padding: 1px 4px;
+    font-size: 8px;
+    font-family: var(--mono);
+    color: var(--amber);
+}
+
+/* ESP32 Chip */
+.chip-esp32 {
+    min-width: 160px;
+    border-color: var(--blue);
+    background: linear-gradient(135deg, #0a1a2e 0%, var(--bg-chip) 100%);
+}
+
+.esp-inner {
+    display: flex;
+    gap: 6px;
+}
+
+/* Relay Chip */
+.chip-relay {
+    min-width: 110px;
+    border-color: var(--amber);
+}
+
+.relay-visual {
+    width: 60px;
+    height: 40px;
+    margin: 6px auto;
+    position: relative;
+    background: #111;
+    border: 1px solid #444;
+    border-radius: 4px;
+}
+
+.relay-coil {
+    position: absolute;
+    left: 6px;
+    top: 8px;
+    width: 20px;
+    height: 24px;
+    border: 2px solid var(--amber);
+    border-radius: 3px;
+}
+
+.relay-arm {
+    position: absolute;
+    right: 6px;
+    top: 12px;
+    width: 24px;
+    height: 3px;
+    background: #ccc;
+    border-radius: 2px;
+    transform-origin: left center;
+    transition: transform 0.3s;
+}
+
+.relay-arm.open { transform: rotate(-25deg); background: var(--red); }
+
+.relay-contact {
+    position: absolute;
+    right: 6px;
+    top: 22px;
+    width: 6px;
+    height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    transition: background 0.3s;
+}
+
+.relay-contact.open { background: var(--red); box-shadow: var(--red-glow); }
+
+/* Ethernet Chips */
+.chip-eth { min-width: 80px; }
+
+/* Tamper Grid */
+.chip-tamper {
+    min-width: 120px;
+    border-color: var(--green);
+}
+
+.tamper-visual {
+    width: 70px;
+    height: 40px;
+    margin: 4px auto;
+    position: relative;
+}
+
+.tamper-grid {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    border: 1px solid var(--green);
+    border-radius: 4px;
+    overflow: hidden;
+    transition: border-color 0.3s;
+}
+
+.tamper-grid.breached { border-color: var(--red); }
+
+.grid-wire {
+    position: absolute;
+    background: var(--green);
+    transition: background 0.3s;
+}
+
+.gw-h { width: 100%; height: 1px; }
+.gw-h:nth-child(1) { top: 33%; }
+.gw-h:nth-child(2) { top: 66%; }
+.gw-v { height: 100%; width: 1px; }
+.gw-v:nth-child(3) { left: 33%; }
+.gw-v:nth-child(4) { left: 66%; }
+
+.tamper-grid.breached .grid-wire {
+    background: var(--red);
+    animation: tamperFlicker 0.3s infinite alternate;
+}
+
+@keyframes tamperFlicker {
+    from { opacity: 1; }
+    to { opacity: 0.3; }
+}
+
+/* SIM800L */
+.chip-sim800l {
+    min-width: 150px;
+    border-color: var(--purple);
+    background: linear-gradient(135deg, #1a0f2e 0%, var(--bg-chip) 100%);
+}
+
+/* Keystore */
+.chip-keystore { min-width: 110px; }
+
+/* LED Bulb */
+.chip-led { min-width: 80px; }
+
+.led-bulb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    margin: 6px auto;
+    background: #333;
+    border: 2px solid #555;
+    transition: all 0.3s;
+}
+
+.led-bulb.solid-green {
+    background: var(--green);
+    box-shadow: var(--green-glow);
+    border-color: var(--green);
+}
+
+.led-bulb.blink-red {
+    background: var(--red);
+    box-shadow: var(--red-glow);
+    border-color: var(--red);
+    animation: ledBlink 0.4s infinite alternate;
+}
+
+@keyframes ledBlink {
+    from { opacity: 1; }
+    to { opacity: 0.2; }
+}
+
+/* ── Wires & Data Flow ────────────────────────────────────────────────── */
+.wire {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.wire-h {
+    width: 40px;
+    height: 20px;
+}
+
+.wire-line {
+    width: 100%;
+    height: 3px;
+    background: #3a4256;
+    border-radius: 2px;
+    transition: background 0.3s;
+}
+
+.wire-line.cut {
+    background: var(--red);
+    height: 3px;
+    background: repeating-linear-gradient(90deg, var(--red) 0, var(--red) 6px, transparent 6px, transparent 10px);
+}
+
+.wire-flow {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: var(--green);
+    border-radius: 50%;
+    opacity: 0;
+    animation: flowPulse 1.2s infinite;
+}
+
+.wire-flow.active { opacity: 1; }
+.wire-flow.stopped { opacity: 0 !important; }
+
+@keyframes flowPulse {
+    0% { left: 0; opacity: 0.8; }
+    100% { left: calc(100% - 8px); opacity: 0.2; }
+}
+
+.wire-v-spacer { width: 20px; height: 10px; }
+
+/* ── State Transitions (Chip Borders) ─────────────────────────────────── */
+.hw-chip.state-alert { border-color: var(--red) !important; box-shadow: var(--red-glow); }
+.hw-chip.state-active { border-color: var(--green) !important; }
+.hw-chip.state-warning { border-color: var(--amber) !important; }
+
+/* ── Right Panel: Telemetry ───────────────────────────────────────────── */
+.state-badge-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.state-ring {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #555;
+    transition: all 0.3s;
+}
+
+.state-ring.armed { background: var(--green); box-shadow: var(--green-glow); }
+.state-ring.lockdown { background: var(--red); box-shadow: var(--red-glow); animation: ledBlink 0.5s infinite alternate; }
+.state-ring.calibrating { background: var(--amber); }
+
+.state-name { font-size: 15px; font-weight: 700; }
+.state-phase { font-size: 11px; color: var(--text-muted); font-family: var(--mono); }
+
+.telemetry-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+.card-title {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+    font-family: var(--mono);
+}
+
+.score-display {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.score-value {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.score-label {
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--mono);
+}
+
+.mini-graph-wrap {
+    background: #111;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 4px;
+    margin-top: 6px;
+}
+
+.metrics-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+}
+
+.mini-metric {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px;
+    text-align: center;
+}
+
+.mm-val {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.mm-label {
+    font-size: 8px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    letter-spacing: 0.5px;
+}
+
+.text-red { color: var(--red); }
+.text-green { color: var(--green); }
+.text-purple { color: var(--purple); }
+.text-cyan { color: var(--blue); }
+
+/* Calibration Progress */
+.progress-bar-track {
+    height: 8px;
+    background: #111;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: var(--orange);
+    width: 0%;
+    transition: width 0.2s;
+    border-radius: 4px;
+}
+
+.progress-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+}
+
+/* Event Log */
+.event-log-card { flex: 1; min-height: 120px; display: flex; flex-direction: column; }
+
+.event-log-scroll {
+    flex: 1;
+    max-height: 200px;
+    overflow-y: auto;
+    background: #0a0c12;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.log-line { padding: 1px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.03); }
+.log-info { color: var(--text-muted); }
+.log-success { color: var(--green); }
+.log-warning { color: var(--amber); }
+.log-critical { color: var(--red); font-weight: 700; }
+
+/* Ledger Mini List */
+.ledger-mini-list {
+    max-height: 100px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ledger-mini-item {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-left: 3px solid var(--purple);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: var(--mono);
+    font-size: 9px;
+    display: flex;
+    justify-content: space-between;
+}

@@ -1,0 +1,27 @@
+[Unit]
+Description=BlackBox Sentinel Autonomous Defense Core Daemon
+After=network.target sentinel-bridge.service
+Requires=sentinel-bridge.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/blackbox-sentinel
+Environment=SENTINEL_HARDWARE=real
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/blackbox-sentinel/venv/bin/python /opt/blackbox-sentinel/sentinel_pipeline.py
+Restart=always
+RestartSec=3
+KillMode=process
+LimitNOFILE=65536
+
+# Security sandbox flags
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/opt/blackbox-sentinel/m3-ml-ledger/data /run/sentinel
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target sentinel.target

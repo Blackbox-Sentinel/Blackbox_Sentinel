@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # ── 1. Sentinel Autonomous Edge Defense Node (Inline Monitor) ──
+  sentinel-node:
+    build:
+      context: ../..
+      dockerfile: m2-systems/sim/Dockerfile.sim
+    container_name: sentinel_aedn_01
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_ADMIN
+    environment:
+      - SENTINEL_HARDWARE=sim
+      - SENTINEL_NODE_ID=AEDN-DOCKER-01
+      - SENTINEL_INTERFACE=br0
+    networks:
+      inline_network:
+        ipv4_address: 10.10.0.100
+    volumes:
+      - ../../m3-ml-ledger/data:/opt/blackbox-sentinel/m3-ml-ledger/data
+      - ../../m3-ml-ledger/models:/opt/blackbox-sentinel/m3-ml-ledger/models
+    command: ["python", "m2-systems/sim/run_simulation.py"]
+
+  # ── 2. Simulated Target Web/DB Server ──
+  target-server:
+    image: nginx:alpine
+    container_name: sentinel_target_server
+    networks:
+      inline_network:
+        ipv4_address: 10.10.0.20
+    depends_on:
+      - sentinel-node
+
+  # ── 3. Simulated Adversary / Traffic Generator ──
+  traffic-injector:
+    build:
+      context: ../..
+      dockerfile: m2-systems/sim/Dockerfile.sim
+    container_name: sentinel_traffic_injector
+    networks:
+      inline_network:
+        ipv4_address: 10.10.0.10
+    depends_on:
+      - sentinel-node
+    command: ["python", "m2-systems/sim/traffic_generator.py"]
+
+networks:
+  inline_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.0.0/24

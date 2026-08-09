@@ -1,0 +1,18 @@
+[Unit]
+Description=BlackBox Sentinel Tactical Touchscreen GUI
+After=sentinel-core.service
+Wants=sentinel-core.service
+
+[Service]
+Type=simple
+User=sentinel
+WorkingDirectory=/opt/blackbox-sentinel/m4-gui-venture
+Environment=DISPLAY=:0
+ExecStart=/opt/blackbox-sentinel/bin/launch_gui.sh
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target sentinel.target
