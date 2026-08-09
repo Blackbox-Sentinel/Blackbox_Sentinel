@@ -7,4 +7,4 @@ packets = sniff(count=10)
 print(f"Captured {len(packets)} packets.")
 
 for packet in packets:
-    print(packet.summary())
+    print(packet.summary()) 

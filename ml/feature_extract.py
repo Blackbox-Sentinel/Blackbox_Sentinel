@@ -4,8 +4,10 @@ import os
 from datetime import datetime
 import time
 
-CSV_FILE = "traffic.csv"
+from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent
+CSV_FILE = BASE_DIR / "traffic.csv"
 header = [
     "timestamp",
     "packets_per_sec",
