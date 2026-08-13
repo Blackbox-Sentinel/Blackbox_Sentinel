@@ -1291,3 +1291,63 @@ html, body {
     opacity: 1;
     transform: translateY(0);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   3.5-INCH DISPLAY RESPONSIVE SCALING FIX (480x320)
+   ══════════════════════════════════════════════════════════════════════════ */
+@media screen and (max-width: 480px) and (max-height: 320px) {
+    /* Scale down the entire body slightly to fit dense dashboard components */
+    body {
+        zoom: 0.65;
+        -moz-transform: scale(0.65);
+        -moz-transform-origin: top left;
+    }
+    
+    #desktop-workspace {
+        padding: 8px;
+    }
+    
+    .gnome-window {
+        top: 10px;
+        left: 20px;
+        right: 10px;
+        bottom: 10px;
+    }
+
+    .win-content {
+        padding: 10px;
+    }
+    
+    .metrics-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+    
+    .status-modules {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    
+    .gdm-clock {
+        font-size: 42px;
+    }
+    
+    .gdm-auth-card {
+        padding: 12px;
+        margin-top: -10px;
+    }
+    
+    #ubuntu-dock {
+        width: 45px;
+    }
+    
+    .dock-app-icon {
+        width: 28px;
+        height: 28px;
+        font-size: 14px;
+    }
+    
+    #desktop-workspace {
+        margin-left: 45px;
+    }
+}
