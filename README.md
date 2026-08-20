@@ -62,11 +62,14 @@ chmod +x setup_workspace.sh && ./setup_workspace.sh
 
 ### 2. Run Sentinel Pipeline
 ```bash
-# Run in Simulation Mode with Web GUI & 3D CAD Studio:
-python sentinel_pipeline.py --mode sim --gui
+# Run the canonical M4 Phase 1 simulation GUI:
+python3 m4-gui-venture/src/app.py
 
-# Run on Physical Raspberry Pi 4 Hardware:
-python sentinel_pipeline.py --mode real
+# Optional: run the browser kiosk prototype:
+python3 m4-gui-venture/server.py
+
+# Run the core pipeline separately (without GUI integration):
+python3 sentinel_pipeline.py
 ```
 
 ### 3. Open Interactive 3D CAD Studio & Ubuntu Kiosk

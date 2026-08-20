@@ -14,6 +14,7 @@ import sys
 import time
 import json
 import threading
+import queue
 import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime, timezone
@@ -40,6 +41,7 @@ from hal import get_hal
 from predict import AnomalyScorer, DeviceState
 from ledger import HashChainLedger
 from traffic_generator import TrafficGenerator
+from pin_security import validate_pin
 
 # ── Aesthetic Styling Constants ──
 WINDOW_WIDTH = 800
@@ -63,6 +65,8 @@ FONT_LOG = ("Consolas", 9)
 class SentinelTacticalApp:
     def __init__(self):
         self.root = tk.Tk()
+        self.ui_thread_id = threading.get_ident()
+        self._ui_log_queue = queue.Queue()
         self.root.title("🛡️ BLACKBOX SENTINEL — AUTONOMOUS EDGE DEFENSE NODE")
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self.root.configure(bg=COLOR_BG_DARK)
@@ -245,7 +249,7 @@ class SentinelTacticalApp:
 
         btn_pin = tk.Button(
             ctrl_bar,
-            text="🔢 PIN OVERRIDE (1234)",
+            text="🔢 PIN OVERRIDE",
             font=FONT_SMALL,
             fg="#ffffff",
             bg="#065f46",
@@ -280,10 +284,18 @@ class SentinelTacticalApp:
             bg=COLOR_PANEL_BG
         ).pack(side=tk.LEFT, padx=10)
 
-    def append_log(self, msg: str):
+    def _append_log_main(self, msg: str):
+        """Append a log entry on Tk's main thread."""
         t_str = datetime.now().strftime("%H:%M:%S")
         self.log_text.insert(tk.END, f"[{t_str}] {msg}\n")
         self.log_text.see(tk.END)
+
+    def append_log(self, msg: str):
+        """Queue worker messages and render them safely in the GUI thread."""
+        if threading.get_ident() == self.ui_thread_id:
+            self._append_log_main(msg)
+        else:
+            self._ui_log_queue.put(msg)
 
     def inject_attack(self, attack_type: str):
         self.injected_attack_type = attack_type
@@ -316,7 +328,7 @@ class SentinelTacticalApp:
 
         def submit():
             code = "".join(pin_str)
-            if self.scorer.pin_override(code):
+            if validate_pin(code) and self.scorer.pin_override(code):
                 self.hal.relay.engage()
                 self.hal.led.solid_on()
                 self.ledger.add_entry("tactical_override", {"pin_status": "ACCEPTED", "relay": "ENGAGED"})
@@ -426,6 +438,12 @@ class SentinelTacticalApp:
 
     def _update_telemetry_loop(self):
         """Update UI elements at 10Hz."""
+        while True:
+            try:
+                self._append_log_main(self._ui_log_queue.get_nowait())
+            except queue.Empty:
+                break
+
         # Update metrics
         self.lbl_pkts.config(text=str(self.packet_count))
         self.lbl_anomalies.config(text=str(self.anomaly_count))

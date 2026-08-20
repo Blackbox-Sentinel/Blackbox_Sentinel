@@ -1,41 +1,18 @@
-# Pitch Deck Outline — BlackBox Sentinel
+# BlackBox Sentinel — Pitch Deck
 
-## Slide 1: Title
-- **BlackBox Sentinel**: Real-Time Network Anomaly Detection with Tamper-Proof Logging
-- Team Members: M1, M2, M3, M4
+The completed Phase 1 slide content is in [`phase1_pitch_deck_content.md`](./phase1_pitch_deck_content.md).
 
-## Slide 2: Problem Statement
-- Network attacks go undetected for an average of 287 days
-- Traditional logging systems can be tampered with by attackers
-- Small organizations lack affordable real-time monitoring
+The deck is designed for an eight-slide semester-project presentation:
 
-## Slide 3: Our Solution
-- ESP32-based hardware packet sniffer (low-cost)
-- Isolation Forest ML model for zero-day anomaly detection
-- SHA-256 hash-chained ledger (tamper-proof by design)
-- 800×480 real-time dashboard
+1. BlackBox Sentinel title and status
+2. Network-defense problem
+3. Proposed solution
+4. Four-module architecture
+5. Simulation demonstration sequence
+6. Technical design
+7. Current results and limitations
+8. Roadmap and value proposition
 
-## Slide 4: Architecture
-- [Insert architecture diagram]
-- 4-module pipeline: Capture → Process → Detect → Display
+Before presenting, replace the explicitly marked “to be measured” items with real benchmark results from the selected traffic dataset. Do not claim physical relay timing, cellular availability, touchscreen behavior, mesh range, or ML accuracy until those properties have been measured.
 
-## Slide 5: Demo
-- Live demo of packet capture → anomaly alert → SMS notification
-
-## Slide 6: Technical Deep Dive
-- Isolation Forest: unsupervised, no labeled data needed
-- Hash chain: O(1) append, O(n) full verification
-- ESP32: <$5 hardware cost
-
-## Slide 7: Results
-- [Insert accuracy metrics, latency benchmarks]
-
-## Slide 8: Future Work
-- Cloud dashboard
-- Multi-sensor mesh network
-- SIEM integration
-
----
-
-> **Design:** Create final pitch deck in Figma/Canva and link it here.
-> **Figma Link:** `[paste your shared Figma URL here]`
+The technical one-page summary is in [`one_pager.md`](./one_pager.md). The technical invention-disclosure draft is in [`invention_disclosure_draft.md`](./invention_disclosure_draft.md). The invention disclosure is a semester-project draft and must be reviewed by the supervisor and qualified patent counsel before any formal filing or novelty claim.
