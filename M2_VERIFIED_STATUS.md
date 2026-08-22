@@ -406,6 +406,54 @@ integration if multi-org support at the object level (e.g. one process
 scoring multiple orgs, or object-level org switching without a process
 restart) is required.
 
+**Update — Issue B: RESOLVED**, by commit
+`d45a1c3abb1fa9e687d5e984b75b89383d1e4a97` ("Fix M3 organization identity
+and document v3 interface", Shashwat Gautam, 22 Aug 2026 23:06:07 +0530),
+touching `m3-ml-ledger/src/predict_v3.py` and adding `ml/M3_INTERFACE.md`.
+
+**Mechanically:** the fix removes the module-level `PROFILE_PATH`/
+`STATE_FILE` constants that were previously computed once at import time
+from the `SENTINEL_ORGANIZATION_ID` env var, decoupled from whatever
+`organization_id` got passed to `AnomalyScorer.__init__()` — that
+decoupling was the root cause of Issue B. In their place,
+`self.organization_id` and `self.profile_path`/`self.state_file` are now
+derived together, per-instance, inside `__init__`:
+
+```python
+explicit_organization = organization_id is not None
+requested_organization = organization_id or os.getenv(
+    "SENTINEL_ORGANIZATION_ID", DEFAULT_ORGANIZATION
+)
+self.organization_id = safe_organization_name(requested_organization)
+...
+self.profile_path = profile_root / f"{self.organization_id}_profile.json"
+```
+
+`_load_profile()`, `_save_state()`, `save_profile()`, and the periodic
+save inside `ingest_feature_window()` all switched from the old module
+constants to `self.profile_path`/`self.state_file`. When `organization_id`
+is passed explicitly to the constructor, it now directly determines which
+profile file loads — the two values that used to be able to disagree are
+structurally the same value. `AnomalyScorer(organization_id="organization_a")`
+no longer crashes with `ValueError: Profile organization_id does not
+match requested organization`.
+
+**Confirmed: nothing from this session's earlier validation was broken.**
+The env-var fallback still works — when `organization_id` is *not* passed
+explicitly, `requested_organization` falls back to `SENTINEL_ORGANIZATION_ID`
+exactly as before, and `SENTINEL_PROFILE_PATH`/`SENTINEL_V3_STATE_FILE`
+overrides are still honored in that case too. The `$env:SENTINEL_ORGANIZATION_ID
+= "organization_a"` workaround this session used earlier in this section
+still produces the same result under the new code.
+
+**`verify_real_capture_schema.py`'s own fix now works standalone.** Our
+A2 fix (`scorer = AnomalyScorer(organization_id=org_id)`, line 63,
+documented above under "Issue A") was correct all along but only
+succeeded when paired with the env-var workaround, because of Issue B.
+With Issue B resolved, that same line now works on its own — the
+`$env:SENTINEL_ORGANIZATION_ID` workaround is no longer necessary for
+`verify_real_capture_schema.py`, though it remains harmless if still set.
+
 ---
 
 ### 6. capture.py cross-platform fix (m2-systems/src/capture.py)
