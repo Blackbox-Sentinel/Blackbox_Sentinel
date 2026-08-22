@@ -396,30 +396,50 @@ claimed the profile was "created fresh at
 `ml/adaptive_profiles/organization_a_profile.json`." That was asserted
 from the `[SCORER] Organization profile: organization_a — 0 accepted
 windows` log line alone, without verifying the file actually existed on
-disk — an inference, not a checked fact. A later filesystem-wide search
-confirms **no `organization_a_profile.json` (or `_state.json`) exists
-anywhere on this machine.** `ml/adaptive_profiles/` contains only
+disk — an inference, not a checked fact. A filesystem-wide search
+performed at that point in the session confirmed **no
+`organization_a_profile.json` (or `_state.json`) existed anywhere on this
+machine** — `ml/adaptive_profiles/` contained only
 `default_organization_profile.json`/`default_organization_state.json`.
 
-**Why:** `predict_v3.py:63` sets
+**Why the file didn't exist yet:** `predict_v3.py:63` sets
 `PROFILE_SAVE_INTERVAL = int(os.getenv("SENTINEL_PROFILE_SAVE_INTERVAL", "60"))`,
 and `predict_v3.py:217-218` only calls `self.profile.save(self.profile_path)`
-when `self.window_count % PROFILE_SAVE_INTERVAL == 0`. Every run in this
-session used `--windows 10`, so window count never reached a multiple of
-60 within a single run, and `verify_real_capture_schema.py`'s `run_live()`
-never calls `scorer.save_profile()` at the end either — so persistence to
-disk was never actually triggered, for `organization_a` or for any org.
-The `[SCORER] Organization profile: ... — 0 accepted windows` line reflects
-a freshly-**constructed in-memory** `AdaptiveBaseline` object each run
+when `self.window_count % PROFILE_SAVE_INTERVAL == 0`. Every run up to
+that point used `--windows 10`, so window count never reached a multiple
+of 60 within a single run, and `verify_real_capture_schema.py`'s
+`run_live()` never calls `scorer.save_profile()` at the end either — so
+persistence to disk was never actually triggered. The `[SCORER]
+Organization profile: ... — 0 accepted windows` line reflects a
+freshly-**constructed in-memory** `AdaptiveBaseline` object each run
 (`AdaptiveBaseline.load_or_create()`'s create-new-profile branch is
 `return cls(...)`, with no disk write), not a persisted file.
 
-**What's still confirmed correct, unaffected by this correction:** the
-org-scoping *logic* itself — per the exact `M3_INTERFACE.md` field-by-field
-match against this run's `scorer_result`, and `organization_id` reading
-`organization_a` correctly throughout. Only the "written to disk" claim
-was wrong; the in-memory scoring and labeling behavior was accurately
-reported.
+**Update — now resolved with real evidence, not just corrected to
+"unknown."** A follow-up `--windows 60` run (window count crosses the
+`PROFILE_SAVE_INTERVAL` threshold) actually triggered persistence:
+`organization_a_profile.json`/`organization_a_state.json` are now
+confirmed created and growing across two consecutive `--windows 60` runs
+(`82826 → 159892` bytes), while `default_organization_profile.json`/
+`default_organization_state.json` are confirmed **byte-identical and
+mtime-unchanged** across all three checkpoints in this session — proving
+genuine per-organization separation, not just coexistence. Separately,
+`ml/M3_INTERFACE.md`'s documented `scorer_result` contract (16 fields:
+`state`, `score`, `probability_attack`, `threshold`, `is_anomaly`,
+`global_prediction`, `local_prediction`, `local_detection_enabled`,
+`organization_id`, `profile_ready`, `profile_samples`,
+`eligible_for_learning`, `local_score`, `top_local_features`,
+`feature_count`, `timestamp`) was checked field-by-field against the
+actual report output — **exact match, no extras, none missing**,
+confirmed stable across both the `--windows 10` and `--windows 60` runs.
+Full evidence (byte counts, mtimes, before/after comparisons) is in
+section 8, below.
+
+**What was confirmed correct even before this update:** the org-scoping
+*logic* itself was never in question — `organization_id` read
+`organization_a` correctly throughout, in both the `[SCORER]` line and
+every `scorer_result`. Only the "written to disk" claim was unverified at
+the time; it's now independently confirmed true.
 
 **Flag — M3-owned interface gap (predict_v3.py / adaptive_baseline.py),
 not blocking:** `AnomalyScorer(organization_id=...)` and the
