@@ -178,3 +178,230 @@ packet capture on br0 was not exercised. Real-capture validation against the
 
 capture.py and bridge.py are not currently used by sentinel_pipeline.py — it
 has its own internal capture loop.
+
+---
+
+## 22 Aug 2026, continued
+
+### 4. Real-capture schema validation (verify_real_capture_schema.py)
+
+**Initial run — false positive.**
+
+Command:
+```
+"venv/Scripts/python.exe" verify_real_capture_schema.py --iface "RZ616 Wi-Fi 6E 160MHz" --windows 10 --org-id organization_a
+```
+
+Raw output (excerpt — all 10 windows identical pattern):
+```
+[INFO] Expecting 45 features per window.
+[SCORER] Loaded v3 model (45 features) — threshold: 0.55
+[SCORER] Organization profile: default_organization — 189 accepted windows, ready=False
+[CAPTURE] Window 1/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=46/45 schema_ok=False scored=calibrating
+...
+[DONE] Report written to C:\Users\suhan shetty\Projects\Blackbox_Sentinel\m2_real_capture_schema_report.json
+[SUMMARY] all_schema_ok=False empty_windows=0
+```
+
+Report excerpt (`m2_real_capture_schema_report.json`):
+```json
+{
+  "window": 0,
+  "feature_count": 46,
+  "expected_count": 45,
+  "missing_features": [],
+  "extra_features": ["window_start_epoch"],
+  "schema_ok": false
+}
+```
+
+**Root cause:** `verify_real_capture_schema.py` line 82 computed
+`actual_keys = set(feature_row.keys()) - {"timestamp"}`, which did not
+exclude the live-capture-only field `window_start_epoch` (present in
+`feature_pipeline_v2.capture_live_window`'s output but not in
+`model_feature_columns()`'s expected schema). Real capture was working
+correctly the whole time — this was a diagnostic-script bug, not a
+capture or model problem.
+
+**Fix applied (one line, verify_real_capture_schema.py:82):**
+```diff
+-        actual_keys = set(feature_row.keys()) - {"timestamp"}
++        actual_keys = set(feature_row.keys()) - {"timestamp", "window_start_epoch"}
+```
+
+**Re-run after fix — clean.**
+
+Command:
+```
+"venv/Scripts/python.exe" verify_real_capture_schema.py --iface "RZ616 Wi-Fi 6E 160MHz" --org-id organization_a --windows 10
+```
+
+Raw output:
+```
+[INFO] Expecting 45 features per window.
+[SCORER] Loaded v3 model (45 features) — threshold: 0.55
+[SCORER] Organization profile: default_organization — 189 accepted windows, ready=False
+[CAPTURE] Window 1/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 2/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 3/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 4/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 5/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 6/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 7/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 8/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 9/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 10/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+
+[DONE] Report written to C:\Users\suhan shetty\Projects\Blackbox_Sentinel\m2_real_capture_schema_report.json
+[SUMMARY] all_schema_ok=True empty_windows=0
+```
+
+Result: **10/10 windows, features=45/45, schema_ok=True, empty_windows=0.**
+Real captured traffic on a live Wi-Fi interface (`RZ616 Wi-Fi 6E 160MHz`,
+192.168.1.6) produces valid 45-feature v3 windows.
+
+---
+
+### 5. Organization ID handling — two issues found and resolved
+
+**Issue A: `verify_real_capture_schema.py` never passed `organization_id`
+into `AnomalyScorer()`.**
+
+Before (verify_real_capture_schema.py:63):
+```python
+scorer = AnomalyScorer()
+```
+
+`--org-id organization_a` was only ever stuffed into
+`row_for_scorer["organization_id"]` (a per-call feature-row field), which
+`AnomalyScorer.ingest_feature_window()` never reads — confirmed by reading
+`m3-ml-ledger/src/predict_v3.py:160-236`, which only ever uses
+`self.organization_id` (set once at construction) in its output, never
+`feature_row["organization_id"]`. This produced
+`"organization_id": "default_organization"` in every scorer result despite
+`--org-id organization_a` being passed on the command line.
+
+**Fix applied (one line, verify_real_capture_schema.py:63):**
+```diff
+-    scorer = AnomalyScorer()
++    scorer = AnomalyScorer(organization_id=org_id)
+```
+
+**Issue B (new finding): `organization_id` passed to `AnomalyScorer()` only
+sets an output label — it does not control which profile file loads.**
+
+Applying the Issue A fix alone crashed:
+
+Command:
+```
+"venv/Scripts/python.exe" verify_real_capture_schema.py --iface "RZ616 Wi-Fi 6E 160MHz" --org-id organization_a --windows 10
+```
+
+Raw output:
+```
+[INFO] Expecting 45 features per window.
+[SCORER] Loaded v3 model (45 features) — threshold: 0.55
+Traceback (most recent call last):
+  File "c:\Users\suhan shetty\Projects\Blackbox_Sentinel\verify_real_capture_schema.py", line 150, in <module>
+    main()
+  File "c:\Users\suhan shetty\Projects\Blackbox_Sentinel\verify_real_capture_schema.py", line 146, in main
+    run_live(args.iface, args.windows, args.org_id)
+  File "c:\Users\suhan shetty\Projects\Blackbox_Sentinel\verify_real_capture_schema.py", line 63, in run_live
+    scorer = AnomalyScorer(organization_id=org_id)
+  File "C:\Users\suhan shetty\Projects\Blackbox_Sentinel\m3-ml-ledger\src\predict_v3.py", line 92, in __init__
+    self._load_profile()
+  File "C:\Users\suhan shetty\Projects\Blackbox_Sentinel\m3-ml-ledger\src\predict_v3.py", line 114, in _load_profile
+    self.profile = AdaptiveBaseline.load_or_create(
+  File "C:\Users\suhan shetty\Projects\Blackbox_Sentinel\ml\adaptive_baseline.py", line 345, in load_or_create
+    raise ValueError(
+ValueError: Profile organization_id does not match requested organization
+```
+
+**Root cause:** `predict_v3.py:54-60` computes `PROFILE_PATH` as a
+module-level constant at import time, from the `SENTINEL_ORGANIZATION_ID`
+env var (default `"default_organization"`) — independent of whatever
+`organization_id` is passed to `AnomalyScorer(organization_id=...)` at
+construction time:
+```python
+ORGANIZATION_ID = os.getenv("SENTINEL_ORGANIZATION_ID", "default_organization")
+PROFILE_PATH = Path(
+    os.getenv(
+        "SENTINEL_PROFILE_PATH",
+        str(ML_ROOT / "adaptive_profiles" / f"{ORGANIZATION_ID}_profile.json"),
+    )
+)
+```
+`AdaptiveBaseline.load_or_create` (`ml/adaptive_baseline.py:330-358`) then
+loads whatever profile sits at that fixed path and validates its stored
+`organization_id` against the constructor argument — since `PROFILE_PATH`
+resolved to `default_organization_profile.json` (env var unset) but the
+constructor argument was `"organization_a"`, the two disagree and it
+raises.
+
+**Workaround used to complete validation** — set the env var before
+import so `PROFILE_PATH` resolves consistently with the constructor arg:
+
+Command:
+```
+$env:SENTINEL_ORGANIZATION_ID = "organization_a"
+venv\Scripts\python.exe verify_real_capture_schema.py --iface "RZ616 Wi-Fi 6E 160MHz" --org-id organization_a --windows 10
+```
+
+Raw output:
+```
+[INFO] Expecting 45 features per window.
+[SCORER] Loaded v3 model (45 features) — threshold: 0.55
+[SCORER] Organization profile: organization_a — 0 accepted windows, ready=False
+[CAPTURE] Window 1/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 2/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 3/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 4/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 5/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 6/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 7/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 8/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 9/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+[CAPTURE] Window 10/10 on iface='RZ616 Wi-Fi 6E 160MHz' ...
+  -> features=45/45 schema_ok=True scored=calibrating
+
+[DONE] Report written to C:\Users\suhan shetty\Projects\Blackbox_Sentinel\m2_real_capture_schema_report.json
+[SUMMARY] all_schema_ok=True empty_windows=0
+```
+
+Result: clean — `organization_id` label now correctly reads
+`organization_a`, profile created fresh at
+`ml/adaptive_profiles/organization_a_profile.json`, 10/10 windows
+schema_ok=True.
+
+**Flag — M3-owned interface gap (predict_v3.py / adaptive_baseline.py),
+not blocking:** `AnomalyScorer(organization_id=...)` and the
+`SENTINEL_ORGANIZATION_ID` env var are two independent inputs that are
+expected to agree but are never validated against each other until
+`AdaptiveBaseline.load_or_create` throws. There is no supported way to
+select a per-org profile purely via the constructor argument — the env
+var (read once, at module import) is authoritative for `PROFILE_PATH`.
+This is fine for the current single-process, single-org-per-run deployment
+model, but per-org profile isolation should be revisited before Week 7
+integration if multi-org support at the object level (e.g. one process
+scoring multiple orgs, or object-level org switching without a process
+restart) is required.
