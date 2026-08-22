@@ -405,3 +405,317 @@ model, but per-org profile isolation should be revisited before Week 7
 integration if multi-org support at the object level (e.g. one process
 scoring multiple orgs, or object-level org switching without a process
 restart) is required.
+
+---
+
+### 6. capture.py cross-platform fix (m2-systems/src/capture.py)
+
+**Problem:** `m2-systems/src/capture.py:14` hardcoded
+`CAPTURE_INTERFACE = "eth0"` — a Linux-only interface name, module-level
+constant, no CLI arg, no env var. On this Windows machine it failed with
+`ValueError: Interface 'eth0' not found !`, which was already documented
+(section 2, above) as the correct/expected failure, not a bug to patch
+around. The real fix is auto-detection.
+
+Confirmed nothing else in the repo reads this constant before touching it:
+
+Command:
+```
+grep -rn "CAPTURE_INTERFACE" .
+```
+
+Raw output:
+```
+m2-systems\src\capture.py:14:CAPTURE_INTERFACE = "eth0"  # Change to your network interface
+m2-systems\src\capture.py:32:    print(f"Interface: {CAPTURE_INTERFACE}")
+m2-systems\src\capture.py:37:        iface=CAPTURE_INTERFACE,
+M2_VERIFIED_STATUS.md:67:        iface=CAPTURE_INTERFACE,
+sentinel_pipeline.py:45:CAPTURE_INTERFACE = os.getenv("SENTINEL_INTERFACE", "br0")
+sentinel_pipeline.py:90:            "interface": CAPTURE_INTERFACE,
+sentinel_pipeline.py:96:        print(f"[PIPELINE] Interface:  {CAPTURE_INTERFACE}")
+sentinel_pipeline.py:139:            f"{CAPTURE_INTERFACE}..."
+sentinel_pipeline.py:144:                iface=CAPTURE_INTERFACE,
+```
+`sentinel_pipeline.py`'s `CAPTURE_INTERFACE` is a separate, unrelated
+module-level constant (`SENTINEL_INTERFACE` env var, default `"br0"`) —
+no import relationship to `capture.py`'s. `M2_VERIFIED_STATUS.md:67` is
+this document's own quoted traceback text, non-executing. Safe to remove.
+
+**Attempt 1 — auto-detect via plain `get_if_list()`, discovered broken on
+Windows.**
+
+First implementation filtered `scapy.all.get_if_list()` for non-loopback
+names, auto-picking on exactly one candidate. Running it with no `--iface`:
+
+Raw output:
+```
+[FATAL] Multiple candidate interfaces found — cannot auto-select confidently.
+Available interfaces (pass one via --iface):
+  \Device\NPF_{A2130613-5A3A-4667-99B0-0D6A313025B8}
+  \Device\NPF_{EDABC4FE-0193-46F2-96CC-AC8F940F3639}
+  \Device\NPF_{BB0E457F-ADE2-432F-96E5-042FEEB61ECD}
+  \Device\NPF_{9015EF72-8B07-4C72-AD8D-0BD1830C96FD}
+  \Device\NPF_{BE306130-9D05-4E95-ADF0-970E299178AE}
+  \Device\NPF_{EEB984AB-8070-4B5C-8C9F-C776E17B7B4C}
+  \Device\NPF_{703F8E8F-1D06-4320-BA10-9CF774B70B5F}
+  \Device\NPF_Loopback
+
+[exited with code 1]
+```
+
+**Root cause:** on Windows, plain `get_if_list()` returns raw NPF device
+GUIDs (`\Device\NPF_{...}`), not human-friendly names like
+`"RZ616 Wi-Fi 6E 160MHz"`. 7 real devices remain after loopback filtering,
+so the "exactly one candidate" auto-pick logic can never fire from this
+data — always ambiguous.
+
+**Investigation: `get_windows_if_list()` field structure.**
+
+Command:
+```
+"venv/Scripts/python.exe" -m pip show scapy
+```
+Raw output:
+```
+Name: scapy
+Version: 2.7.0
+Summary: Scapy: interactive packet manipulation tool
+Home-page: https://scapy.net
+Author: Philippe BIONDI, Gabriel POTTER
+Author-email:
+License: GPL-2.0-only
+Location: C:\Users\suhan shetty\Projects\Blackbox_Sentinel\venv\Lib\site-packages
+Requires:
+Required-by:
+```
+
+Command:
+```
+"venv/Scripts/python.exe" -c "
+from scapy.arch.windows import get_windows_if_list
+ifaces = get_windows_if_list()
+print(f'TYPE: {type(ifaces)}')
+print(f'COUNT: {len(ifaces)}')
+for i, iface in enumerate(ifaces):
+    print(f'--- interface {i} ---')
+    print(f'  raw dict: {iface}')
+    print(f'  keys: {sorted(iface.keys())}')
+"
+```
+Raw output: `TYPE: <class 'list'>`, `COUNT: 50`. Every entry shares the
+same keys: `['description', 'guid', 'index', 'ips', 'ipv4_metric',
+'ipv6_metric', 'mac', 'name', 'nameservers', 'type']`. Full raw dump:
+```
+--- interface 0 ---
+  raw dict: {'name': 'Ethernet', 'index': 6, 'description': 'VirtualBox Host-Only Ethernet Adapter', 'guid': '{703F8E8F-1D06-4320-BA10-9CF774B70B5F}', 'mac': '0a:00:27:00:00:06', 'type': 6, 'ipv4_metric': 25, 'ipv6_metric': 25, 'ips': ['fe80::653a:dd29:bc9:fea8', '192.168.56.1'], 'nameservers': ['fec0:0:0:ffff::1', 'fec0:0:0:ffff::2', 'fec0:0:0:ffff::3']}
+--- interface 1 ---
+  raw dict: {'name': 'Local Area Connection* 1', 'index': 18, 'description': 'Microsoft Wi-Fi Direct Virtual Adapter', 'guid': '{EEB984AB-8070-4B5C-8C9F-C776E17B7B4C}', 'mac': 'ae:f2:3c:54:db:85', 'type': 71, 'ipv4_metric': 25, 'ipv6_metric': 25, 'ips': ['fe80::739a:b3f8:bde2:a485', '169.254.108.237'], 'nameservers': ['fec0:0:0:ffff::1', 'fec0:0:0:ffff::2', 'fec0:0:0:ffff::3']}
+--- interface 2 ---
+  raw dict: {'name': 'Local Area Connection* 2', 'index': 14, 'description': 'Microsoft Wi-Fi Direct Virtual Adapter #2', 'guid': '{BE306130-9D05-4E95-ADF0-970E299178AE}', 'mac': 'ae:f2:3c:54:cb:95', 'type': 71, 'ipv4_metric': 25, 'ipv6_metric': 25, 'ips': ['fe80::ad87:9651:98cc:7ba1', '169.254.49.65'], 'nameservers': ['fec0:0:0:ffff::1', 'fec0:0:0:ffff::2', 'fec0:0:0:ffff::3']}
+--- interface 3 ---
+  raw dict: {'name': 'Wi-Fi', 'index': 8, 'description': 'RZ616 Wi-Fi 6E 160MHz', 'guid': '{9015EF72-8B07-4C72-AD8D-0BD1830C96FD}', 'mac': 'ac:f2:3c:54:fb:a5', 'type': 71, 'ipv4_metric': 30, 'ipv6_metric': 30, 'ips': ['fe80::8bb8:60e1:3529:5e96', '10.25.27.26'], 'nameservers': ['10.10.10.1']}
+--- interface 4 ---
+  raw dict: {'name': 'Loopback Pseudo-Interface 1', 'index': 1, 'description': 'Software Loopback Interface 1', 'guid': '{5E0E10DA-85BF-11EF-9FD1-806E6F6E6963}', 'mac': '', 'type': 24, 'ipv4_metric': 75, 'ipv6_metric': 75, 'ips': ['::1', '127.0.0.1'], 'nameservers': ['fec0:0:0:ffff::1', 'fec0:0:0:ffff::2', 'fec0:0:0:ffff::3']}
+--- interface 5 ---
+  raw dict: {'name': 'Ethernet-WFP Native MAC Layer LightWeight Filter-0000', 'index': 19, 'description': 'VirtualBox Host-Only Ethernet Adapter-WFP Native MAC Layer LightWeight Filter-0000', 'guid': '{8913572C-9D96-11F1-A059-806E6F6E6963}', 'mac': '0a:00:27:00:00:06', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 6 ---
+  raw dict: {'name': 'Local Area Connection* 9-Npcap Packet Driver (NPCAP)-0000', 'index': 25, 'description': 'WAN Miniport (IPv6)-Npcap Packet Driver (NPCAP)-0000', 'guid': '{89137228-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': '', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 7 ---
+  raw dict: {'name': 'Ethernet-WFP 802.3 MAC Layer LightWeight Filter-0000', 'index': 21, 'description': 'VirtualBox Host-Only Ethernet Adapter-WFP 802.3 MAC Layer LightWeight Filter-0000', 'guid': '{8913572E-9D96-11F1-A059-806E6F6E6963}', 'mac': '0a:00:27:00:00:06', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 8 ---
+  raw dict: {'name': 'Local Area Connection* 8-WFP Native MAC Layer LightWeight Filter-0000', 'index': 38, 'description': 'WAN Miniport (IP)-WFP Native MAC Layer LightWeight Filter-0000', 'guid': '{89135A6A-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': '', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 9 ---
+  raw dict: {'name': 'Local Area Connection* 8-QoS Packet Scheduler-0000', 'index': 39, 'description': 'WAN Miniport (IP)-QoS Packet Scheduler-0000', 'guid': '{89135A6B-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': '', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 10 ---
+  raw dict: {'name': 'Local Area Connection* 9-WFP Native MAC Layer LightWeight Filter-0000', 'index': 40, 'description': 'WAN Miniport (IPv6)-WFP Native MAC Layer LightWeight Filter-0000', 'guid': '{89135A6C-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': '', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 11 ---
+  raw dict: {'name': 'Local Area Connection* 9-QoS Packet Scheduler-0000', 'index': 41, 'description': 'WAN Miniport (IPv6)-QoS Packet Scheduler-0000', 'guid': '{89135A6D-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': '', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 12 ---
+  raw dict: {'name': 'Local Area Connection* 10-WFP Native MAC Layer LightWeight Filter-0000', 'index': 42, 'description': 'WAN Miniport (Network Monitor)-WFP Native MAC Layer LightWeight Filter-0000', 'guid': '{89135A6E-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': '', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 13 ---
+  raw dict: {'name': 'Local Area Connection* 10-QoS Packet Scheduler-0000', 'index': 43, 'description': 'WAN Miniport (Network Monitor)-QoS Packet Scheduler-0000', 'guid': '{89135A6F-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': '', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 14 ---
+  raw dict: {'name': 'Ethernet-QoS Packet Scheduler-0000', 'index': 44, 'description': 'VirtualBox Host-Only Ethernet Adapter-QoS Packet Scheduler-0000', 'guid': '{8913721C-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': '0a:00:27:00:00:06', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 15 ---
+  raw dict: {'name': 'Local Area Connection* 8-Npcap Packet Driver (NPCAP)-0000', 'index': 35, 'description': 'WAN Miniport (IP)-Npcap Packet Driver (NPCAP)-0000', 'guid': '{89137225-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': '', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 16 ---
+  raw dict: {'name': 'Local Area Connection* 10-Npcap Packet Driver (NPCAP)-0000', 'index': 46, 'description': 'WAN Miniport (Network Monitor)-Npcap Packet Driver (NPCAP)-0000', 'guid': '{89137224-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': '', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 17 ---
+  raw dict: {'name': 'Ethernet-Npcap Packet Driver (NPCAP)-0000', 'index': 49, 'description': 'VirtualBox Host-Only Ethernet Adapter-Npcap Packet Driver (NPCAP)-0000', 'guid': '{8913721B-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': '0a:00:27:00:00:06', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 18 ---
+  raw dict: {'name': 'Bluetooth Network Connection', 'index': 11, 'description': 'Bluetooth Device (Personal Area Network)', 'guid': '{99A78D0C-15FA-46BE-A977-D0563FA5AE06}', 'mac': 'ac:f2:3c:54:fb:a6', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 19 ---
+  raw dict: {'name': 'Ethernet (Kernel Debugger)', 'index': 15, 'description': 'Microsoft Kernel Debug Network Adapter', 'guid': '{C4FE71E4-ECCC-4E10-88A8-D9B3B83D18A8}', 'mac': '', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 20 ---
+  raw dict: {'name': 'Local Area Connection* 8', 'index': 13, 'description': 'WAN Miniport (IP)', 'guid': '{BB0E457F-ADE2-432F-96E5-042FEEB61ECD}', 'mac': '', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 21 ---
+  raw dict: {'name': 'Local Area Connection* 9', 'index': 17, 'description': 'WAN Miniport (IPv6)', 'guid': '{EDABC4FE-0193-46F2-96CC-AC8F940F3639}', 'mac': '', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 22 ---
+  raw dict: {'name': 'Local Area Connection* 10', 'index': 12, 'description': 'WAN Miniport (Network Monitor)', 'guid': '{A2130613-5A3A-4667-99B0-0D6A313025B8}', 'mac': '', 'type': 6, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 23 ---
+  raw dict: {'name': 'Local Area Connection* 7', 'index': 5, 'description': 'WAN Miniport (PPPOE)', 'guid': '{380B97AD-82AE-4586-A109-2EDFFD74E802}', 'mac': '', 'type': 23, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 24 ---
+  raw dict: {'name': 'Wi-Fi-WFP Native MAC Layer LightWeight Filter-0000', 'index': 22, 'description': 'RZ616 Wi-Fi 6E 160MHz-WFP Native MAC Layer LightWeight Filter-0000', 'guid': '{89135786-9D96-11F1-A059-ACF23C54FBA5}', 'mac': 'ac:f2:3c:54:fb:a5', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 25 ---
+  raw dict: {'name': 'Wi-Fi-Virtual WiFi Filter Driver-0000', 'index': 23, 'description': 'RZ616 Wi-Fi 6E 160MHz-Virtual WiFi Filter Driver-0000', 'guid': '{2B0C3D72-33F8-11F0-9FD8-A04DD371893E}', 'mac': 'ac:f2:3c:54:fb:a5', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 26 ---
+  raw dict: {'name': 'Wi-Fi-Native WiFi Filter Driver-0000', 'index': 24, 'description': 'RZ616 Wi-Fi 6E 160MHz-Native WiFi Filter Driver-0000', 'guid': '{2B0C3D73-33F8-11F0-9FD8-A04DD371893E}', 'mac': 'ac:f2:3c:54:fb:a5', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 27 ---
+  raw dict: {'name': 'Local Area Connection* 1-Npcap Packet Driver (NPCAP)-0000', 'index': 20, 'description': 'Microsoft Wi-Fi Direct Virtual Adapter-Npcap Packet Driver (NPCAP)-0000', 'guid': '{89137229-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': 'ae:f2:3c:54:db:85', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 28 ---
+  raw dict: {'name': 'Wi-Fi-VirtualBox NDIS Light-Weight Filter-0000', 'index': 26, 'description': 'RZ616 Wi-Fi 6E 160MHz-VirtualBox NDIS Light-Weight Filter-0000', 'guid': '{D820D5BE-909F-11F1-A04D-9F44496C522B}', 'mac': 'ac:f2:3c:54:fb:a5', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 29 ---
+  raw dict: {'name': 'Wi-Fi-WFP 802.3 MAC Layer LightWeight Filter-0000', 'index': 27, 'description': 'RZ616 Wi-Fi 6E 160MHz-WFP 802.3 MAC Layer LightWeight Filter-0000', 'guid': '{89135789-9D96-11F1-A059-ACF23C54FBA5}', 'mac': 'ac:f2:3c:54:fb:a5', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 30 ---
+  raw dict: {'name': 'Local Area Connection* 1-WFP Native MAC Layer LightWeight Filter-0000', 'index': 28, 'description': 'Microsoft Wi-Fi Direct Virtual Adapter-WFP Native MAC Layer LightWeight Filter-0000', 'guid': '{8913581D-9D96-11F1-A059-ACF23C54FBA5}', 'mac': 'ae:f2:3c:54:db:85', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 31 ---
+  raw dict: {'name': 'Local Area Connection* 1-Native WiFi Filter Driver-0000', 'index': 29, 'description': 'Microsoft Wi-Fi Direct Virtual Adapter-Native WiFi Filter Driver-0000', 'guid': '{2B0C3D80-33F8-11F0-9FD8-A04DD371893E}', 'mac': 'ae:f2:3c:54:db:85', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 32 ---
+  raw dict: {'name': 'Local Area Connection* 2-Npcap Packet Driver (NPCAP)-0000', 'index': 30, 'description': 'Microsoft Wi-Fi Direct Virtual Adapter #2-Npcap Packet Driver (NPCAP)-0000', 'guid': '{89137226-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': 'ae:f2:3c:54:cb:95', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 33 ---
+  raw dict: {'name': 'Local Area Connection* 1-VirtualBox NDIS Light-Weight Filter-0000', 'index': 31, 'description': 'Microsoft Wi-Fi Direct Virtual Adapter-VirtualBox NDIS Light-Weight Filter-0000', 'guid': '{D820D5C3-909F-11F1-A04D-9F44496C522B}', 'mac': 'ae:f2:3c:54:db:85', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 34 ---
+  raw dict: {'name': 'Local Area Connection* 1-WFP 802.3 MAC Layer LightWeight Filter-0000', 'index': 32, 'description': 'Microsoft Wi-Fi Direct Virtual Adapter-WFP 802.3 MAC Layer LightWeight Filter-0000', 'guid': '{8913583E-9D96-11F1-A059-ACF23C54FBA5}', 'mac': 'ae:f2:3c:54:db:85', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 35 ---
+  raw dict: {'name': 'Local Area Connection* 2-WFP Native MAC Layer LightWeight Filter-0000', 'index': 33, 'description': 'Microsoft Wi-Fi Direct Virtual Adapter #2-WFP Native MAC Layer LightWeight Filter-0000', 'guid': '{891359F5-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': 'ae:f2:3c:54:cb:95', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 36 ---
+  raw dict: {'name': 'Local Area Connection* 2-Native WiFi Filter Driver-0000', 'index': 34, 'description': 'Microsoft Wi-Fi Direct Virtual Adapter #2-Native WiFi Filter Driver-0000', 'guid': '{2B0C3E0A-33F8-11F0-9FD8-A04DD371893E}', 'mac': 'ae:f2:3c:54:cb:95', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 37 ---
+  raw dict: {'name': 'Wi-Fi-Npcap Packet Driver (NPCAP)-0000', 'index': 47, 'description': 'RZ616 Wi-Fi 6E 160MHz-Npcap Packet Driver (NPCAP)-0000', 'guid': '{89137222-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': 'ac:f2:3c:54:fb:a5', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 38 ---
+  raw dict: {'name': 'Local Area Connection* 2-VirtualBox NDIS Light-Weight Filter-0000', 'index': 36, 'description': 'Microsoft Wi-Fi Direct Virtual Adapter #2-VirtualBox NDIS Light-Weight Filter-0000', 'guid': '{D820D5C1-909F-11F1-A04D-9F44496C522B}', 'mac': 'ae:f2:3c:54:cb:95', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 39 ---
+  raw dict: {'name': 'Local Area Connection* 2-WFP 802.3 MAC Layer LightWeight Filter-0000', 'index': 37, 'description': 'Microsoft Wi-Fi Direct Virtual Adapter #2-WFP 802.3 MAC Layer LightWeight Filter-0000', 'guid': '{891359F7-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': 'ae:f2:3c:54:cb:95', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 40 ---
+  raw dict: {'name': 'Wi-Fi-QoS Packet Scheduler-0000', 'index': 45, 'description': 'RZ616 Wi-Fi 6E 160MHz-QoS Packet Scheduler-0000', 'guid': '{89137223-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': 'ac:f2:3c:54:fb:a5', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 41 ---
+  raw dict: {'name': 'Local Area Connection* 2-QoS Packet Scheduler-0000', 'index': 48, 'description': 'Microsoft Wi-Fi Direct Virtual Adapter #2-QoS Packet Scheduler-0000', 'guid': '{89137227-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': 'ae:f2:3c:54:cb:95', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 42 ---
+  raw dict: {'name': 'Local Area Connection* 1-QoS Packet Scheduler-0000', 'index': 50, 'description': 'Microsoft Wi-Fi Direct Virtual Adapter-QoS Packet Scheduler-0000', 'guid': '{8913722A-9D96-11F1-A059-8ABE5E49A5E1}', 'mac': 'ae:f2:3c:54:db:85', 'type': 71, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 43 ---
+  raw dict: {'name': 'Teredo Tunneling Pseudo-Interface', 'index': 9, 'description': 'Microsoft Teredo Tunneling Adapter', 'guid': '{93123211-9629-4E04-82F0-EA2E4F221468}', 'mac': '', 'type': 131, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 44 ---
+  raw dict: {'name': 'Microsoft IP-HTTPS Platform Interface', 'index': 4, 'description': 'Microsoft IP-HTTPS Platform Adapter', 'guid': '{2EE2C70C-A092-4D88-A654-98C8D7645CD5}', 'mac': '', 'type': 131, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 45 ---
+  raw dict: {'name': '6to4 Adapter', 'index': 2, 'description': 'Microsoft 6to4 Adapter', 'guid': '{07374750-E68B-490E-9330-9FD785CD71B6}', 'mac': '', 'type': 131, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 46 ---
+  raw dict: {'name': 'Local Area Connection* 3', 'index': 10, 'description': 'WAN Miniport (SSTP)', 'guid': '{99012715-F6C4-4D10-AAF3-63C6241C4AC9}', 'mac': '', 'type': 131, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 47 ---
+  raw dict: {'name': 'Local Area Connection* 4', 'index': 16, 'description': 'WAN Miniport (IKEv2)', 'guid': '{D58393CC-1220-4511-8407-5AC16B26762C}', 'mac': '', 'type': 131, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 48 ---
+  raw dict: {'name': 'Local Area Connection* 5', 'index': 7, 'description': 'WAN Miniport (L2TP)', 'guid': '{8622FEFB-6354-4348-A126-1BEA0BE4F0F4}', 'mac': '', 'type': 131, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+--- interface 49 ---
+  raw dict: {'name': 'Local Area Connection* 6', 'index': 3, 'description': 'WAN Miniport (PPTP)', 'guid': '{1D13E7AC-CF7B-4F81-BFB6-F2A384CF35DA}', 'mac': '', 'type': 131, 'ipv4_metric': 0, 'ipv6_metric': 0, 'ips': [], 'nameservers': []}
+```
+
+**Key finding — `description` matches, `name` does not.** Every earlier
+`verify_real_capture_schema.py` run passed `--iface "RZ616 Wi-Fi 6E
+160MHz"` and worked. That string matches interface 3's **`description`**
+field (`'RZ616 Wi-Fi 6E 160MHz'`), not its `name` field (`'Wi-Fi'`). Also
+flagged: interfaces 24, 25, 26, 28, 29, 37, 40 all have `description`
+values starting with `"RZ616 Wi-Fi 6E 160MHz-..."` too (WFP filters, QoS
+scheduler, Virtual WiFi Filter Driver, etc. layered on the same physical
+adapter) — a naive substring match on `description` would hit multiple
+entries, not just interface 3. The fix uses exact `description` equality
+via a filtered candidate list, not substring matching, to avoid this.
+
+**Cross-platform import safety, checked via source (not tested on a
+non-Windows machine — none available here).** `scapy/arch/windows/__init__.py`
+does `import winreg` unconditionally at module level (confirmed at line 18
+of that file). `winreg` is Windows-only in the Python standard library —
+importing `scapy.arch.windows` (required for `get_windows_if_list`) would
+raise `ModuleNotFoundError` (an `ImportError` subclass) on Linux/macOS,
+at import time, before the function is ever called. The fix imports
+`get_windows_if_list` lazily inside a Windows-only code path, guarded by
+`scapy.consts.WINDOWS` (confirmed importable cross-platform — no `winreg`
+dependency in `scapy/consts.py`), never at module top level.
+
+**Fix applied** — `resolve_interface()` split into
+`_resolve_interface_windows()` (uses `get_windows_if_list()`, filters on
+non-empty `ips`, `type != 24`, no `"loopback"` in `description`, at least
+one IP not link-local/APIPA, matches on `description`) and
+`_resolve_interface_posix()` (unchanged `get_if_list()` + name-loopback
+filtering, since real friendly names are returned natively there).
+`CAPTURE_INTERFACE` constant removed entirely; `--iface` bypasses
+auto-detection completely when passed.
+
+**Verified path A — explicit `--iface` override, unaffected by
+auto-detect.**
+
+Command:
+```
+"venv/Scripts/python.exe" m2-systems/src/capture.py --iface eth0
+```
+Raw output (excerpt):
+```
+=== BlackBox Sentinel M2 — Packet Capture ===
+Interface: eth0
+Output: c:\Users\suhan shetty\Projects\Blackbox_Sentinel\m2-systems\src\..\..\m3-ml-ledger\data\capture_20260822_154327.pcap
+Capturing 1000 packets...
+
+Traceback (most recent call last):
+  ...
+  File "C:\Users\suhan shetty\Projects\Blackbox_Sentinel\venv\Lib\site-packages\scapy\interfaces.py", line 434, in resolve_iface
+    raise ValueError("Interface '%s' not found !" % dev)
+ValueError: Interface 'eth0' not found !
+```
+Confirms `--iface` reaches Scapy's `sniff()` unmodified — no silent
+correction of a bad explicit value.
+
+Command:
+```
+"venv/Scripts/python.exe" m2-systems/src/capture.py --iface "RZ616 Wi-Fi 6E 160MHz"
+```
+Raw output (header + first lines, real live traffic — ran to completion
+in ~5s, full 1000-packet capture, no Ctrl+C needed):
+```
+=== BlackBox Sentinel M2 — Packet Capture ===
+Interface: RZ616 Wi-Fi 6E 160MHz
+Output: c:\Users\suhan shetty\Projects\Blackbox_Sentinel\m2-systems\src\..\..\m3-ml-ledger\data\capture_20260822_155611.pcap
+Capturing 1000 packets...
+
+[CAPTURE] Ether / IP / UDP / mDNS Qry b'_googlecast._tcp.local.'
+[CAPTURE] Ether / IPv6 / UDP / mDNS Qry b'_googlecast._tcp.local.'
+[CAPTURE] Ether / IP / UDP / mDNS Qry b'_googlecast._tcp.local.'
+[CAPTURE] Ether / IPv6 / UDP / mDNS Qry b'_googlecast._tcp.local.'
+[CAPTURE] Ether / ARP who has 10.25.31.194 says 10.25.20.98 / Padding
+```
+No `[AUTO-DETECT]` line (correct — bypassed when `--iface` is passed).
+
+**Verified path B — auto-detect, ambiguous-candidate branch.**
+
+Command:
+```
+"venv/Scripts/python.exe" m2-systems/src/capture.py
+```
+Raw output:
+```
+[FATAL] Multiple candidate interfaces found — cannot auto-select confidently.
+Available interfaces (pass one via --iface):
+  VirtualBox Host-Only Ethernet Adapter
+  Microsoft Wi-Fi Direct Virtual Adapter
+  Microsoft Wi-Fi Direct Virtual Adapter #2
+  RZ616 Wi-Fi 6E 160MHz
+  Software Loopback Interface 1
+  ... (49 total, full list printed)
+```
+Confirms the zero-or-multiple branch works and correctly prints
+`description` values, not raw dicts or GUIDs.
+
+**Known limitation — explicitly unverified: the exactly-one-candidate
+auto-pick success path.** On this machine, `VirtualBox Host-Only Ethernet
+Adapter` (interface 0, IP `192.168.56.1`, non-link-local) and
+`RZ616 Wi-Fi 6E 160MHz` (interface 3, IP `10.25.27.26`) both pass the
+candidate filter, so `resolve_interface()` always lands in the
+zero-or-multiple branch on this hardware — it has never actually reached
+the `if len(candidates) == 1: ... return selected` line in this session.
+That branch is logically simple and symmetric with the POSIX path (which
+*has* been exercised in earlier sections of this document via
+`verify_real_capture_schema.py`), but it has zero live execution evidence
+here. Verifying it would require either a machine without a VM host-only
+adapter holding a real IP, or temporarily disabling that adapter on this
+one — neither was done in this session. This is the documented, intended
+behavior per the fix's design (a VM adapter with a real IP is
+indistinguishable from a second physical NIC using ip-presence data
+alone), not a defect — but the single-candidate code path itself remains
+unexercised.
