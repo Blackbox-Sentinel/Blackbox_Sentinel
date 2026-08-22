@@ -1,8 +1,8 @@
-# BlackBox Sentinel � M2 Session Continuation Summary
+# BlackBox Sentinel — M2 Session Continuation Summary
 
 **Purpose:** This document preserves full context from this session so a new chat (or a teammate) can continue without re-deriving anything already settled. It follows the same format as the M2/M3 Continuation Summaries already in the project.
 
-**User:** Suhan Shetty, B.Tech VIT Pune (Cybersecurity/Blockchain/IoT), 2nd year. Module owner: M2 � Systems.
+**User:** Suhan Shetty, B.Tech VIT Pune (Cybersecurity/Blockchain/IoT), 2nd year. Module owner: M2 — Systems.
 
 **Today (session date):** 22 Aug 2026
 
@@ -137,7 +137,7 @@ Every run passed ``--org-id organization_a`` explicitly, but every single window
 | P2 (MED) | **3 unit tests** for capture/feature-extraction path | Not started |
 | P2 (MED) | **60-second demo recording** | Not started |
 | P2 (MED) | **capture.py cross-platform fix** (hardcoded eth0 -> auto-detect via scapy.get_if_list()) | Not started -- was queued as "Step 3," held until real-capture validation (P1) fully closes out |
-| P3 (LOW) | **Digital twin sim** (sim/run_simulation.py, needs WSL2) | Not started, lower urgency |
+| P3 (LOW) | **Digital twin sim** (sim/run_simulation.py) | ✅ Done — ran clean on native Windows, no WSL2 needed (confirmed not installed on this machine); "needs WSL2" was a stale assumption, traced to the separate veth-lab/Docker testbed in the same directory, not this script. See M2_VERIFIED_STATUS.md section 7. |
 | BLOCKED | bridge.py real ESP32 test | Blocked -- needs M1 hardware, not solo-actionable |
 
 ---

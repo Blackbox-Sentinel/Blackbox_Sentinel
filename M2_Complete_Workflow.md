@@ -26,7 +26,7 @@ This update merges Track A (real-capture validation, carried over from the 22 Au
 
 | # | Task | Status |
 |---|---|---|
-| A8 | Digital twin sim (`sim/run_simulation.py`, needs WSL2) | Not started, low urgency |
+| A8 | Digital twin sim (`sim/run_simulation.py`) | ✅ Done — ran clean on native Windows, no WSL2 needed (confirmed not installed on this machine); "needs WSL2" was a stale assumption, traced to the separate veth-lab/Docker testbed in the same directory, not this script. See M2_VERIFIED_STATUS.md section 7. |
 | A9 | `bridge.py` real ESP32 test | ⏸ **Blocked** — needs M1 hardware, not solo-actionable |
 
 ---

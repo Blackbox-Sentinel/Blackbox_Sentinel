@@ -719,3 +719,176 @@ behavior per the fix's design (a VM adapter with a real IP is
 indistinguishable from a second physical NIC using ip-presence data
 alone), not a defect — but the single-candidate code path itself remains
 unexercised.
+
+---
+
+### 7. Digital twin simulation (m2-systems/sim/run_simulation.py)
+
+**Investigation first: does this actually need WSL2?**
+
+The A-track planning docs (`M2_Complete_Workflow.md`, task A8;
+`M2_Session_Continuation_Summary.md`, priority P3) both note this sim as
+"needs WSL2." Checked before running:
+
+- `run_simulation.py`'s full import block (lines 1-39) uses only
+  `os`/`sys`/`time`/`shutil` plus internal modules (`hal`, `predict`,
+  `ledger`, `traffic_generator`) — no raw sockets, no Linux-specific
+  networking APIs, no driver imports. It even has an explicit Windows
+  compatibility shim (`sys.stdout.reconfigure` guarded on
+  `sys.platform == "win32"`).
+- `m2-systems/README.md:55-58`, the module's own documented quickstart,
+  lists `python m2-systems/sim/run_simulation.py` under "Run Digital Twin
+  Simulation (No Hardware Needed)" with no WSL2/Linux caveat.
+- The genuinely Linux-only pieces in the same directory are
+  `setup_veth_lab.sh` (uses `ip netns`, veth pairs — real Linux kernel
+  primitives with no Windows equivalent) and `docker-compose.yml` /
+  `Dockerfile.sim` (a separate, more elaborate multi-container testbed).
+  Neither is imported or invoked by `run_simulation.py` itself.
+
+Command:
+```
+"venv/Scripts/python.exe" m2-systems/sim/run_simulation.py
+```
+
+Confirmed WSL2 is not installed on this machine:
+```
+wsl --status
+```
+Raw output:
+```
+The Windows Subsystem for Linux is not installed. You can install by running 'wsl.exe --install'.
+For more information please visit https://aka.ms/wslinstall
+```
+(exit code 50)
+
+**Full raw output of the run** (ran on native Windows Python, no WSL2,
+to a clean completion — this is a scripted six-phase demo, not a
+continuous process, so it stopped on its own):
+
+```
+======================================================================
+   🛡️  BLACKBOX SENTINEL — DIGITAL TWIN SIMULATION OS (v2.1)  🛡️
+======================================================================
+[SECURITY] Volatile RAM Keystore mounted. Master keys provisioned in c:\Users\suhan shetty\Projects\Blackbox_Sentinel\scratch_keys_vault
+[HAL] Initializing Hardware Abstraction Layer in mode: [SIM]
+[HAL-SIM] [RELAY] Relay initialized in ENGAGED state (data line connected)
+[HAL-SIM] [TAMPER] Monitor active (Grid continuous)
+[HAL-SIM] [LED] Status LED initialized (OFF)
+[HAL-SIM] [CELLULAR] SIM800L Modem: Registered to SIMULATED-2G-GSM Network (RSSI: 24/31)
+[HAL-SIM] [MESH] ESP-NOW Radio: Node 'AEDN-RACK-01' listening on UDP loopback :39999
+[SCORER] Loaded existing model — state: ARMED
+[NODE] Initialized Node: AEDN-RACK-01
+[NODE] Forensic Ledger: c:\Users\suhan shetty\Projects\Blackbox_Sentinel\m3-ml-ledger\data\sim_sentinel_ledger.json
+
+----------------------------------------------------------------------
+▶️  PHASE 1: 48-HOUR BASELINE CALIBRATION CYCLE (Fast Simulation Window)
+----------------------------------------------------------------------
+[CALIBRATE] Started — collecting baseline for 1800s
+[HAL-SIM] [LED] [OFF] — System Calibrating / Idle
+[CALIBRATE] Ingesting 120 baseline normal enterprise traffic samples...
+[CALIBRATE] Training on 121 baseline samples...
+[CALIBRATE] Complete — state: ARMED
+[HAL-SIM] [LED] [SOLID GREEN] — System Armed & Monitoring
+
+[PIPELINE] ✅ AI Model trained. System is ARMED and actively defending.
+
+----------------------------------------------------------------------
+▶️  PHASE 2: NORMAL TRAFFIC MONITORING
+----------------------------------------------------------------------
+  [INSPECT] Pkt #121: Port 443 (677B) -> Score: 0.1124 [STATUS: NORMAL]
+  [INSPECT] Pkt #122: Port 443 (769B) -> Score: 0.1315 [STATUS: NORMAL]
+  [INSPECT] Pkt #123: Port 80 (482B) -> Score: 0.1380 [STATUS: NORMAL]
+  [INSPECT] Pkt #124: Port 80 (147B) -> Score: 0.0865 [STATUS: NORMAL]
+  [INSPECT] Pkt #125: Port 443 (372B) -> Score: -0.0077 [STATUS: NORMAL]
+  [INSPECT] Pkt #126: Port 80 (432B) -> Score: 0.1332 [STATUS: NORMAL]
+  [INSPECT] Pkt #127: Port 22 (267B) -> Score: -0.0179 [STATUS: NORMAL]
+  [INSPECT] Pkt #128: Port 80 (587B) -> Score: 0.0881 [STATUS: NORMAL]
+  [INSPECT] Pkt #129: Port 80 (563B) -> Score: 0.0318 [STATUS: NORMAL]
+  [INSPECT] Pkt #130: Port 53 (153B) -> Score: -0.0784 [STATUS: NORMAL]
+
+----------------------------------------------------------------------
+▶️  PHASE 3: ADVERSARIAL ATTACK INJECTION & AUTONOMOUS CONTAINMENT
+----------------------------------------------------------------------
+⚡ [ATTACK INJECTED] Rogue C2 Data Exfiltration: 14709.361758006693 Bytes on Port 4444
+
+🚨 [ANOMALY DETECTED] Reconstruction Error Delta Spike! Score: -0.0579
+[HAL-SIM] [RELAY FIRED] Mechanical data line is now CUT / ISOLATED
+[BUS-INTERRUPT] Mechanical Data Line State Changed -> ISOLATED
+[HAL-SIM] [LED] [RAPID FLASHING RED (0.2s)] — System in ALERT / LOCKDOWN
+📋 [FORENSIC LEDGER] Block #2 committed -> SHA-256: 7701a0c03d3652cc405c56cfa9900ffb75a6a30731b790b8e989280ebf2a0bd6
+
+[HAL-SIM] [CELLULAR OOB SMS SENT] Destination: +919876543210
+  Message: "SECURITY ALERT: Node AEDN-RACK-01 detected DATA_EXFILTRATION. Line isolated. SHA256: 7701a0c03d36"
+[HAL-SIM] [ESP-NOW MESH BROADCAST] Gossiping threat profile to peer rack nodes...
+  Payload: {'threat_type': 'DATA_EXFILTRATION', 'attacker_port': 4444, 'victim_port': 4444, 'isolation_time': 1787419298.990763}
+
+----------------------------------------------------------------------
+▶️  PHASE 4: TOUCHSCREEN TACTICAL PIN OVERRIDE (Patent Claim 1)
+----------------------------------------------------------------------
+[TOUCH-GUI] On-site administrator entering physical PIN: '1234' on 800x480 screen...
+[OVERRIDE] PIN accepted — state: ARMED
+[HAL-SIM] [RELAY ENGAGED] Mechanical data line is now RESTORED
+[BUS-INTERRUPT] Mechanical Data Line State Changed -> ENGAGED
+[HAL-SIM] [LED] [SOLID GREEN] — System Armed & Monitoring
+✅ [OVERRIDE] Data line mechanically RESTORED. Node returned to ARMED.
+
+----------------------------------------------------------------------
+▶️  PHASE 5: ANTI-TAMPER PHYSICAL HOUSING BREACH (Patent Claim 2)
+----------------------------------------------------------------------
+[PHYSICAL] Simulating malicious casing breach / lid removal...
+
+[HAL-SIM] [TAMPER ALERT] Enclosure breach detected! Triggering zeroization...
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+🚨 [TAMPER INTERRUPT] ENCLOSURE TAMPER GRID SEVERED!
+🔥 [ZEROIZATION] EXECUTING VOLATILE RAM CRYPTOGRAPHIC KEY PURGE...
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+✅ [ZEROIZATION] Cryptographic keys wiped and RAM zeroed out.
+[HAL-SIM] [RELAY FIRED] Mechanical data line is now CUT / ISOLATED
+[BUS-INTERRUPT] Mechanical Data Line State Changed -> ISOLATED
+[HAL-SIM] [LED] [RAPID FLASHING RED (0.05s)] — System in ALERT / LOCKDOWN
+
+[HAL-SIM] [CELLULAR OOB SMS SENT] Destination: +919876543210
+  Message: "CRITICAL ALERT: Node AEDN-RACK-01 enclosure breached! Keys zeroized, data line severed."
+
+----------------------------------------------------------------------
+▶️  PHASE 6: CRYPTOGRAPHIC FORENSIC AUDIT
+----------------------------------------------------------------------
+🔐 [AUDIT] Forensic Ledger Chain Integrity: ✅ 100% VALID (UNALTERED)
+📊 [SUMMARY] Total Packets: 131 | Anomalies: 1 | Total Ledger Blocks: 5
+======================================================================
+   🏆  BLACKBOX SENTINEL DIGITAL TWIN VALIDATION SUITE: PASSED  🏆
+======================================================================
+
+[exited with code 0]
+```
+
+**Result: all six phases completed — calibration, normal-traffic
+monitoring, attack injection + autonomous containment, PIN override
+recovery, tamper/zeroization, and forensic audit — ending in
+`DIGITAL TWIN VALIDATION SUITE: PASSED`, exit code 0.**
+
+**Correction to prior planning docs:** the "needs WSL2" note in
+`M2_Complete_Workflow.md` (task A8) and `M2_Session_Continuation_Summary.md`
+(priority P3) does not hold for `run_simulation.py` itself, confirmed by
+this run — WSL2 is not installed on this machine and the script completed
+cleanly on native Windows Python. That assumption traces back to the
+separate veth-lab/Docker testbed (`setup_veth_lab.sh`,
+`docker-compose.yml`) sitting in the same directory, which genuinely does
+need Linux networking primitives — not to `run_simulation.py`, which
+doesn't invoke either of them. Both planning docs are being corrected to
+reflect this (see their own diffs).
+
+**Worth a follow-up question for M3, not asserted as a bug:** in Phase 2,
+several `NORMAL`-status packets scored negative (`-0.0077`, `-0.0179`,
+`-0.0784`), and the packet that triggered `[ANOMALY DETECTED]` in Phase 3
+also scored negative (`-0.0579`) — numerically less extreme than at least
+one of the `NORMAL` scores in Phase 2 (`-0.0784`). This may be entirely
+correct depending on the scoring convention this model uses (e.g. a
+reconstruction-error-delta metric where the anomaly decision isn't a
+simple "is the score below/above a fixed line" comparison, or where sign
+alone isn't meaningful and some other combined signal drove the
+detection) — nothing here is asserted as a defect. Flagging it as a
+question for M3 on the exact threshold/scoring convention in this sim's
+model, since the score-to-decision relationship isn't obvious from this
+output alone and wasn't investigated further in this session.
