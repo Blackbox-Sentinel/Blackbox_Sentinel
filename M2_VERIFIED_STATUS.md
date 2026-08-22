@@ -389,9 +389,37 @@ Raw output:
 ```
 
 Result: clean — `organization_id` label now correctly reads
-`organization_a`, profile created fresh at
-`ml/adaptive_profiles/organization_a_profile.json`, 10/10 windows
-schema_ok=True.
+`organization_a`, 10/10 windows schema_ok=True.
+
+**Correction (added later in this session):** this section originally
+claimed the profile was "created fresh at
+`ml/adaptive_profiles/organization_a_profile.json`." That was asserted
+from the `[SCORER] Organization profile: organization_a — 0 accepted
+windows` log line alone, without verifying the file actually existed on
+disk — an inference, not a checked fact. A later filesystem-wide search
+confirms **no `organization_a_profile.json` (or `_state.json`) exists
+anywhere on this machine.** `ml/adaptive_profiles/` contains only
+`default_organization_profile.json`/`default_organization_state.json`.
+
+**Why:** `predict_v3.py:63` sets
+`PROFILE_SAVE_INTERVAL = int(os.getenv("SENTINEL_PROFILE_SAVE_INTERVAL", "60"))`,
+and `predict_v3.py:217-218` only calls `self.profile.save(self.profile_path)`
+when `self.window_count % PROFILE_SAVE_INTERVAL == 0`. Every run in this
+session used `--windows 10`, so window count never reached a multiple of
+60 within a single run, and `verify_real_capture_schema.py`'s `run_live()`
+never calls `scorer.save_profile()` at the end either — so persistence to
+disk was never actually triggered, for `organization_a` or for any org.
+The `[SCORER] Organization profile: ... — 0 accepted windows` line reflects
+a freshly-**constructed in-memory** `AdaptiveBaseline` object each run
+(`AdaptiveBaseline.load_or_create()`'s create-new-profile branch is
+`return cls(...)`, with no disk write), not a persisted file.
+
+**What's still confirmed correct, unaffected by this correction:** the
+org-scoping *logic* itself — per the exact `M3_INTERFACE.md` field-by-field
+match against this run's `scorer_result`, and `organization_id` reading
+`organization_a` correctly throughout. Only the "written to disk" claim
+was wrong; the in-memory scoring and labeling behavior was accurately
+reported.
 
 **Flag — M3-owned interface gap (predict_v3.py / adaptive_baseline.py),
 not blocking:** `AnomalyScorer(organization_id=...)` and the
@@ -940,3 +968,50 @@ detection) — nothing here is asserted as a defect. Flagging it as a
 question for M3 on the exact threshold/scoring convention in this sim's
 model, since the score-to-decision relationship isn't obvious from this
 output alone and wasn't investigated further in this session.
+
+---
+
+### 8. M3 handoff review — Shashwat's fix, step 4: CLOSED
+
+Following Shashwat's commit `d45a1c3` (section 5 update, above), his
+handoff message asked M2 to review four specific things without changing
+the model. All four are now evidenced, not just asserted:
+
+**1. `organization_id` correct** — `organization_a`, matching `--org-id
+organization_a`, confirmed in both the `[SCORER]` startup line and every
+`scorer_result.organization_id` in the report, across both runs in this
+section.
+
+**2. `feature_count` = 45** — `45/45` in every window, both the
+`--windows 10` and `--windows 60` runs, `all_schema_ok=true` in both
+reports.
+
+**3. `M3_INTERFACE.md` exact field match** — all 16 fields documented in
+section 6 of `ml/M3_INTERFACE.md` (`state`, `score`, `probability_attack`,
+`threshold`, `is_anomaly`, `global_prediction`, `local_prediction`,
+`local_detection_enabled`, `organization_id`, `profile_ready`,
+`profile_samples`, `eligible_for_learning`, `local_score`,
+`top_local_features`, `feature_count`, `timestamp`) are present in
+`scorer_result` with correct types, no extras, none missing — confirmed
+stable across two independent runs (`--windows 10` and `--windows 60`),
+not a one-off match.
+
+**4. Adaptive profile genuinely separated per organization** — proven
+with mtime evidence, not just asserted:
+
+- `organization_a_profile.json`/`organization_a_state.json` confirmed
+  created (didn't exist before the `--windows 60` run — a filesystem-wide
+  search prior to that run found zero `organization_a` files anywhere)
+  and confirmed growing across two consecutive `--windows 60` runs:
+  `82826 → 159892` bytes, `mtime` advancing from
+  `2026-08-23 00:02:14.435362200` — accumulated `profile_samples` climbed
+  from `0` to `61` across the runs, consistent with real persistence, not
+  a fresh object each time.
+- `default_organization_profile.json`/`default_organization_state.json`
+  confirmed **byte-identical and mtime-unchanged** across all three
+  checkpoints in this session (`2026-08-22 23:52:16.976591400` /
+  `...979129400`, unchanged before the first `organization_a` write,
+  after it, and after the second) — writing to one organization's profile
+  did not touch the other's, at all, twice in a row.
+
+**Step 4: CLOSED.**
