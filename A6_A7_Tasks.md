@@ -85,3 +85,11 @@ Show me raw output and tell me roughly how long the full run took, so I can time
 ```
 
 **Done when:** you have a screen recording, real terminal output, no editing needed to look legitimate — since it already is.
+
+**Status: ✅ Done.** Recording completed, ~63.5s total. Actual script
+execution time was ~17-18s (matching the earlier rehearsal timing) — the
+rest of the clip is setup/typing/pause padding around the command, not the
+operation itself running long. This run also showed `empty_windows=2` (vs.
+0 in every earlier run this session) — this is normal live Wi-Fi traffic
+variance (a capture window catching zero packets in its 1-second slot),
+not a regression; `all_schema_ok=True` was unaffected.
