@@ -53,3 +53,7 @@ htmlcov/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# CICIDS datasets (large, regenerated)
+datasets/
+ml/data/*.csv

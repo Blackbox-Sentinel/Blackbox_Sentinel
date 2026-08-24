@@ -1,0 +1,35 @@
+{
+  "dataset": "..\\datasets\\CICIDS2017\\fast_flow_labeled_v3\\pcap_flow_labeled_v3_all.csv",
+  "baseline": {
+    "format_version": 2,
+    "organization_id": "real_v3_validation",
+    "feature_count": 45,
+    "min_baseline_samples": 1000,
+    "reservoir_size": 1000,
+    "refit_interval": 2048,
+    "samples_seen": 1000,
+    "accepted_samples": 1000,
+    "rejected_samples": 0,
+    "ready": true,
+    "detector_ready": false,
+    "detector_threshold": null,
+    "last_fit_accepted_samples": 0
+  },
+  "benign_evaluation": {
+    "samples": 500,
+    "anomalies": 6,
+    "anomaly_rate": 0.012,
+    "mean_local_score": 0.0023455499538121254,
+    "mean_max_robust_z": 0.27006731864738515
+  },
+  "attack_evaluation": {
+    "samples": 500,
+    "anomalies": 113,
+    "anomaly_rate": 0.226,
+    "mean_local_score": 0.04847645461915737,
+    "mean_max_robust_z": 0.5010115044375052
+  },
+  "attack_types": {
+    "DoS Hulk;DoS slowloris": 500
+  }
+}

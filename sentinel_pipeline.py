@@ -34,8 +34,9 @@ sys.path.insert(0, os.path.join(ROOT, "m3-ml-ledger", "src"))
 sys.path.insert(0, os.path.join(ROOT, "common"))
 
 from hal import get_hal
-from predict import AnomalyScorer, DeviceState
 from ledger import HashChainLedger
+from predict_v3 import AnomalyScorer, DeviceState
+
 
 # ─── Configuration ────────────────────────────────────────────
 LEDGER_PATH = os.path.join(ROOT, "m3-ml-ledger", "data", "sentinel_ledger.json")
@@ -71,10 +72,12 @@ class SentinelPipeline:
             node_id=NODE_ID
         )
 
-        # ── M3: ML Scorer + Forensic Ledger ──
-        self.scorer = AnomalyScorer()
+        # ── M3: Validated v3 scorer + organization profile + ledger ──
+        self.scorer = AnomalyScorer(
+            organization_id=os.getenv("SENTINEL_ORGANIZATION_ID", "default_organization")
+        )
         self.ledger = HashChainLedger(LEDGER_PATH)
-        
+
         # State
         self.running = False
         self.packet_count = 0
@@ -129,56 +132,73 @@ class SentinelPipeline:
             self._demo_loop()
 
     def _sniff_scapy(self):
-        from scapy.all import sniff, IP, TCP, UDP
-        prev_time = time.time()
+        from ml.feature_pipeline_v2 import capture_live_window
 
-        def process_packet(pkt):
-            nonlocal prev_time
-            if not self.running or IP not in pkt:
-                return
-
-            now = time.time()
-            features = {
-                "packet_size": float(len(pkt)),
-                "inter_arrival": float(now - prev_time),
-                "protocol": int(pkt[IP].proto),
-                "src_port": int(pkt[TCP].sport if TCP in pkt else (pkt[UDP].sport if UDP in pkt else 0)),
-                "dst_port": int(pkt[TCP].dport if TCP in pkt else (pkt[UDP].dport if UDP in pkt else 0)),
-            }
-            prev_time = now
-            self.packet_count += 1
-            
-            result = self.scorer.ingest_features(features)
-            self._handle_result(result, features)
-
-        print(f"[CAPTURE] Sniffing transparently on inline bridge {CAPTURE_INTERFACE}...")
-        sniff(
-            iface=CAPTURE_INTERFACE,
-            prn=process_packet,
-            store=False,
-            stop_filter=lambda _: not self.running
+        print(
+            f"[CAPTURE] Sniffing one-second v3 windows on inline bridge "
+            f"{CAPTURE_INTERFACE}..."
         )
+        while self.running:
+            feature_row = capture_live_window(
+                timeout=1.0,
+                iface=CAPTURE_INTERFACE,
+                history_state=self.scorer.history_state,
+            )
+            self.packet_count += int(round(feature_row.get("packets_per_sec", 0.0)))
+            result = self.scorer.ingest_feature_window(feature_row)
+            self._handle_result(result, feature_row)
 
     def _demo_loop(self):
-        """High-fidelity synthetic traffic loop for local development & demonstration."""
-        import numpy as np
+        """Generate raw M2-style packets, then convert each batch to a v3 window."""
+        import time as _time
+        from scapy.all import IP, Raw, TCP, UDP
+
         sys.path.insert(0, os.path.join(ROOT, "m2-systems", "sim"))
         from traffic_generator import TrafficGenerator
-        
+        from ml.feature_pipeline_v2 import window_features
+
         gen = TrafficGenerator()
-        print("[DEMO] Streaming simulated enterprise traffic...\n")
+        print("[DEMO] Streaming simulated enterprise traffic through v3 windows...\n")
 
         while self.running:
-            # Inject attack every 50 packets when armed
-            if self.packet_count > 0 and self.packet_count % 50 == 0 and self.scorer.state == DeviceState.ARMED:
-                features = gen.generate_attack_packet("EXFILTRATION")
-                print(f"\n[DEMO] ⚡ Injecting anomalous packet #{self.packet_count + 1} ({features['label']})...")
-            else:
-                features = gen.generate_normal_packet()
+            packets = []
+            labels = []
+            for _ in range(25):
+                if (
+                    self.packet_count > 0
+                    and self.packet_count % 50 == 0
+                    and self.scorer.state == DeviceState.ARMED
+                ):
+                    raw = gen.generate_attack_packet("EXFILTRATION")
+                else:
+                    raw = gen.generate_normal_packet()
+                labels.append(raw.get("label", "NORMAL"))
+                payload_size = max(0, int(raw["packet_size"]) - 64)
+                if raw["protocol"] == 6:
+                    packet = (
+                        IP(src="10.0.0.1", dst="10.0.0.2")
+                        / TCP(sport=raw["src_port"], dport=raw["dst_port"])
+                        / Raw(load=b"x" * payload_size)
+                    )
+                elif raw["protocol"] == 17:
+                    packet = (
+                        IP(src="10.0.0.1", dst="10.0.0.2")
+                        / UDP(sport=raw["src_port"], dport=raw["dst_port"])
+                        / Raw(load=b"x" * payload_size)
+                    )
+                else:
+                    packet = IP(src="10.0.0.1", dst="10.0.0.2") / Raw(
+                        load=b"x" * payload_size
+                    )
+                packet.time = _time.time()
+                packets.append(packet)
 
-            self.packet_count += 1
-            result = self.scorer.ingest_features(features)
-            self._handle_result(result, features)
+            feature_row = window_features(packets, _time.time(), 1.0)
+            feature_row = self.scorer.history_state.enrich(feature_row)
+            feature_row["synthetic_label"] = labels[-1]
+            self.packet_count += len(packets)
+            result = self.scorer.ingest_feature_window(feature_row)
+            self._handle_result(result, feature_row)
             time.sleep(0.04)
 
     def _handle_result(self, result: dict, features: dict):
@@ -195,30 +215,49 @@ class SentinelPipeline:
         if state == "calibrating":
             self._was_calibrating = True
             if self.packet_count % 50 == 0:
-                remaining = result.get("calibration_remaining", 0)
-                print(f"  [CALIBRATE] {result.get('samples_collected', 0)} baseline samples | {remaining:.0f}s window remaining")
+                print(
+                    f"  [CALIBRATE] {result.get('profile_samples', 0)} accepted "
+                    f"baseline windows | local detection enabled="
+                    f"{result.get('local_detection_enabled', False)}"
+                )
             return
-        
+
         # ── Anomaly detected ──
         if result.get("is_anomaly", False):
             self.anomaly_count += 1
             score = result.get("score", 0.0)
             
-            print(f"\n🚨 [ALERT] ANOMALY #{self.anomaly_count} DETECTED! Reconstruction Error Score: {score:.4f}")
-            print(f"  Packet: size={features['packet_size']:.0f}B, dst_port={features['dst_port']}, protocol={features['protocol']}")
-            
+            print(
+                f"\n🚨 [ALERT] ANOMALY #{self.anomaly_count} DETECTED! "
+                f"v3 score: {score:.4f} | "
+                f"global={result.get('global_prediction')} | "
+                f"local={result.get('local_prediction')}"
+            )
+            print(
+                f"  Window: packets/sec={features.get('packets_per_sec', 0.0):.2f}, "
+                f"bytes/sec={features.get('bytes_per_sec', 0.0):.2f}, "
+                f"tcp_ratio={features.get('tcp_ratio', 0.0):.3f}"
+            )
+
             # 1. Fire physical/mock mechanical isolation relay
             self.hal.relay.isolate()
             self.hal.led.blink(0.2)
             self.scorer.trigger_lockdown()
 
             # 2. Commit SHA-256 block to forensic ledger
-            entry = self.ledger.add_entry("anomaly_lockdown", {
-                "features": features,
-                "score": score,
-                "packet_number": self.packet_count,
-                "action": "RELAY_ISOLATED"
-            }, anomaly_score=score)
+            entry = self.ledger.add_entry(
+                "anomaly_lockdown",
+                {
+                    "features": features,
+                    "score": score,
+                    "prediction": result.get("combined_prediction", "ATTACK"),
+                    "organization_id": result.get("organization_id"),
+                    "window_number": self.packet_count,
+                    "action": "RELAY_ISOLATED",
+                },
+                anomaly_score=score,
+            )
+
             print(f"  📋 [LEDGER] Block #{entry['index']} SHA-256: {entry['hash'][:24]}...")
 
             # 3. Out-of-band cellular SMS alert (SIM800L)
@@ -231,8 +270,9 @@ class SentinelPipeline:
             self.hal.mesh.broadcast_threat({
                 "source_node": NODE_ID,
                 "threat_score": score,
-                "dst_port": features["dst_port"],
-                "protocol": features["protocol"]
+                "organization_id": result.get("organization_id"),
+                "global_prediction": result.get("global_prediction"),
+                "local_prediction": result.get("local_prediction"),
             })
 
             print("[PIPELINE] 🔒 LOCKDOWN ACTIVE — Data line mechanically CUT.")
@@ -295,20 +335,27 @@ class SentinelPipeline:
     def stop(self):
         """Graceful shutdown."""
         self.running = False
-        
-        self.ledger.add_entry("system_shutdown", {
-            "packets_processed": self.packet_count,
-            "anomalies_detected": self.anomaly_count
-        })
-        
+        self.scorer.save_profile()
+
+        self.ledger.add_entry(
+            "system_shutdown",
+            {
+                "packets_processed": self.packet_count,
+                "anomalies_detected": self.anomaly_count,
+            },
+        )
+
         is_valid, broken_at = self.ledger.verify_chain()
-        print(f"\n[LEDGER] Forensic Chain Integrity: {'✅ VALID' if is_valid else f'❌ BROKEN at #{broken_at}'}")
+        print(
+            f"\n[LEDGER] Forensic Chain Integrity: "
+            f"{'✅ VALID' if is_valid else f'❌ BROKEN at #{broken_at}'}"
+        )
         print(f"[LEDGER] Total Committed Blocks: {len(self.ledger.chain)}")
-        
+
         # Restore relay and cleanup HAL
         self.hal.relay.engage()
         self.hal.cleanup()
-        
+
         print("\n[PIPELINE] Shutdown complete.")
 
 
