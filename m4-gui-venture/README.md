@@ -2,95 +2,116 @@
 
 > **Owner:** M4 GUI/Venture Lead
 >
-> **Canonical Phase 1 demo:** `m4-gui-venture/src/app.py`
+> **Canonical touchscreen demo:** `gui/dashboard.py`
 >
-> **Mode:** Simulation only (`SENTINEL_HARDWARE=sim`)
+> **Mode:** Simulation first (`SENTINEL_HARDWARE=sim`)
 
 ## Purpose
 
-M4 owns the laptop dashboard, the PIN override workflow, and the venture-facing project material. The canonical Phase 1 deliverable is an 800×480 Tkinter dashboard that can demonstrate the Sentinel software loop without Raspberry Pi, ESP32, relay, SIM800L, or touchscreen hardware.
+M4 owns the dashboard, operator recovery workflow, and venture-facing project material. The canonical hardware-facing interface is a compact **480×320 PyQt6 dashboard** designed for the Raspberry Pi 3.5-inch touchscreen. The larger Tkinter dashboard under `m4-gui-venture/src/app.py` remains useful for desktop development and detailed simulation.
 
-The browser kiosk under `web/` is retained as a visual/kiosk prototype. The older PyQt prototype under `gui/dashboard.py` is not the canonical Phase 1 demo. Keeping one official demo path prevents the team from presenting inconsistent behavior during evaluation.
+The new patent-scope requirements make M4 a telemetry and evidence-view layer. The GUI must display controller-reported state and must never create or bypass the trusted security decision. Values that are unknown, stale, rejected, conflicting, or not configured must be shown explicitly rather than represented as successful.
 
 ## Quick start
 
-From the repository root, install the project dependencies and launch the canonical simulation GUI:
+From the repository root:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -r requirements.txt
+python3 gui/dashboard.py
+```
+
+For the larger desktop simulation dashboard:
+
+```bash
 python3 m4-gui-venture/src/app.py
 ```
 
-On Ubuntu/Debian, Tkinter may need to be installed through the operating system package manager:
+On Ubuntu/Debian, Tkinter may need to be installed separately:
 
 ```bash
 sudo apt-get install python3-tk
 ```
 
-The default simulation PIN is `1234`. For a local demonstration, it can be overridden without changing source code:
+The default controlled simulation PIN is `1234`. It can be overridden for local testing with `SENTINEL_PIN`, but this is not a production authentication design.
 
-```bash
-SENTINEL_PIN=2468 python3 m4-gui-venture/src/app.py
-```
+## Touchscreen target
 
-This PIN is a controlled simulation credential, not a production authentication design.
+The current target is a 3.5-inch Raspberry Pi touchscreen with a default working layout of **480×320**. Confirm the exact vendor driver, framebuffer/device path, rotation, touch calibration, and reported resolution before hardware bring-up. The setup script avoids forcing 800×480 HDMI timings because SPI/GPIO touchscreen modules use vendor-specific display drivers.
 
-## Phase 1 demonstration sequence
+## Patent-scope evidence visible in the touchscreen dashboard
 
-The repeatable demo should follow this order:
+The compact dashboard displays the following simulation evidence:
 
-1. Launch the GUI and show the `CALIBRATING` state.
-2. Allow calibration to finish and show `ARMED & MONITORING` with packet and ledger counters increasing.
-3. Inject `C2 ATTACK` or `SYN FLOOD`.
-4. Show the anomaly, relay isolation, ledger hash, and mock SMS event.
-5. Open the on-screen PIN keypad and submit an incorrect PIN. The line must remain isolated.
-6. Submit the configured correct PIN. The line must return to the armed state and a tactical override event must be written.
-7. Optionally activate `BREACH CASING` and show key zeroization, tamper alert, relay isolation, and ledger entry.
+| Evidence | Display behavior |
+|---|---|
+| Controller state | Shows `ARMED`, `ISOLATED`, or `TAMPERED` instead of only a local GUI lock flag |
+| Relay state | Separates relay isolation/restoration status and controller acknowledgment |
+| Independent signals | Shows known-attack and adaptive-anomaly evidence as a two-signal decision |
+| Quorum | Shows `N/A` when multi-node quorum is not configured; it must not fabricate votes |
+| Receipt | Shows receipt ID and cryptographic verification status when available |
+| Tamper/key state | Shows secure/breached and valid/invalidated states without exposing key material |
+| Recovery | Requires the exact configured PIN and reports rejected recovery attempts |
 
-## Phase 1 completion checklist
+The current simulator backend also exposes normalized controller, signal, quorum, receipt, power, and recovery fields through `/api/state` for the browser simulator and future shared event integration.
 
-- [x] Laptop dashboard runs in simulation mode.
-- [x] Telemetry displays packets, anomalies, ledger blocks, uptime, relay, LED, GSM, and tamper state.
-- [x] Simulated attack controls are available.
-- [x] Simulated anomaly response isolates the relay and writes an event.
-- [x] PIN keypad rejects incorrect values and accepts only an exact configured PIN.
-- [x] GUI log updates are marshalled to Tkinter's main thread.
-- [x] PIN validation has automated tests in `tests/test_m4_pin_security.py`.
-- [ ] Connect the GUI to the shared M2/M3 event bus or replay stream during Phase 2.
-- [ ] Replace demo-only hardcoded simulation assumptions for real hardware integration.
-- [ ] Complete the patent draft, one-pager, and final pitch deck.
+## Phase 2 and patent-scope event contract
 
-## Phase 2 event contract
-
-M2/M3 should provide events to the GUI using the following minimum structure. The transport can initially be a JSON Lines file, an in-process queue, or a local HTTP/WebSocket endpoint; the GUI should not depend on M2/M3 internal classes.
+M2/M3 should provide normalized events containing at least:
 
 ```json
 {
-  "timestamp": "2026-08-20T12:00:00Z",
-  "event_type": "anomaly_lockdown",
-  "severity": 0.91,
-  "anomaly_score": -0.115,
-  "relay_state": "ISOLATED",
-  "ledger_hash": "...",
-  "sms_status": "MOCK_SENT"
+  "event_type": "containment_decision",
+  "controller_state": "ISOLATED",
+  "signals": [
+    {"type": "known_attack", "source": "m3-known-detector", "auth": "VALID", "freshness": "FRESH"},
+    {"type": "adaptive_anomaly", "source": "m3-adaptive-profile", "auth": "VALID", "freshness": "FRESH"}
+  ],
+  "relay_requested": "ISOLATED",
+  "relay_acknowledged": "ISOLATED",
+  "quorum": {"required": 0, "received": 0, "decision": "NOT_CONFIGURED"},
+  "receipt": {"id": "receipt-00000001", "counter": 1, "verification": "VALID"},
+  "key_state": "VALID",
+  "power_state": "PRIMARY",
+  "recovery_state": "LOCKED"
 }
 ```
 
-The required Phase 2 loop is: traffic → detection → mock relay cut → ledger event → GUI alert → mock SMS. The same event contract should remain usable when `HARDWARE=real` is introduced.
+The real hardware implementation must authenticate these fields at the controller boundary. The Phase 2 Python controller is a simulation scaffold and is not a substitute for ESP32/security-MCU enforcement.
+
+## Current checklist
+
+- [x] Compact 480×320 touchscreen dashboard.
+- [x] Relay, tamper, key, power, controller, signal, quorum, receipt, and recovery indicators.
+- [x] Two independent authenticated-signal simulation policy.
+- [x] Anti-replay, freshness, and payload-integrity checks in the simulation controller.
+- [x] Monotonic containment receipt generation and verification in the simulation controller.
+- [x] Wrong-PIN rejection and exact-PIN recovery workflow.
+- [x] Hardware simulator state fields for final M4 visibility.
+- [x] Automated tests for controller policy and receipt verification.
+- [ ] Replace simulation authentication with real controller-side firmware enforcement.
+- [ ] Define and implement authenticated peer quorum with M1/M2/M3.
+- [ ] Add hardware-backed key invalidation and dedicated hold-up power path.
+- [ ] Connect the GUI to live authenticated telemetry instead of local simulation state.
 
 ## Directory layout
 
 ```text
-m4-gui-venture/
-├── src/
-│   ├── app.py            # Canonical Tkinter simulation dashboard
-│   └── pin_security.py   # Exact-match, configurable simulation PIN validation
-├── web/                  # Optional browser kiosk and visual simulator prototype
-├── pitch/
-│   └── deck.md           # Venture presentation outline
-├── hw_simulator_server.py
-├── server.py
-└── README.md
+Blackbox_Sentinel/
+├── gui/
+│   └── dashboard.py          # Canonical compact 480×320 touchscreen dashboard
+├── security/
+│   └── trusted_controller.py # Simulation trusted-controller policy and receipts
+├── m4-gui-venture/
+│   ├── src/app.py            # Larger desktop Tkinter dashboard
+│   ├── hw_simulator_server.py# Digital-twin backend and normalized state API
+│   └── pitch/                # Venture deliverables
+├── m2-systems/os/
+│   └── sentinel_touchscreen.sh # Raspberry Pi 3.5-inch setup script
+├── docs/
+│   └── Patent_Scope_Upgrade_Implementation.md
+└── tests/
+    └── test_trusted_controller.py
 ```

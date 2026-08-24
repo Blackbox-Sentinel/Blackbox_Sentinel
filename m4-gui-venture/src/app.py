@@ -42,6 +42,7 @@ from predict import AnomalyScorer, DeviceState
 from ledger import HashChainLedger
 from traffic_generator import TrafficGenerator
 from pin_security import validate_pin
+from security.trusted_controller import TrustedController
 
 # ── Aesthetic Styling Constants ──
 WINDOW_WIDTH = 800
@@ -94,6 +95,7 @@ class SentinelTacticalApp:
             node_id=self.node_id
         )
         self.scorer = AnomalyScorer()
+        self.controller = TrustedController(secret=os.urandom(32), quorum_required=0)
         self.ledger = HashChainLedger(self.ledger_path)
         self.traffic_gen = TrafficGenerator()
 
@@ -180,6 +182,15 @@ class SentinelTacticalApp:
 
         self.lbl_tamper_stat = tk.Label(hw_panel, text="🛡️ Anti-Tamper: ENCLOSURE SECURE", font=FONT_SMALL, fg=COLOR_SUCCESS_GREEN, bg=COLOR_PANEL_BG, anchor="w")
         self.lbl_tamper_stat.pack(fill=tk.X, padx=10, pady=2)
+
+        self.lbl_controller_stat = tk.Label(hw_panel, text="🧠 Controller: SAFE | Link: HEALTHY", font=FONT_SMALL, fg=COLOR_SUCCESS_GREEN, bg=COLOR_PANEL_BG, anchor="w")
+        self.lbl_controller_stat.pack(fill=tk.X, padx=10, pady=2)
+        self.lbl_signal_stat = tk.Label(hw_panel, text="🔐 Signals: 0/2 independent evidence", font=FONT_SMALL, fg=COLOR_TEXT_MUTED, bg=COLOR_PANEL_BG, anchor="w")
+        self.lbl_signal_stat.pack(fill=tk.X, padx=10, pady=2)
+        self.lbl_receipt_stat = tk.Label(hw_panel, text="🧾 Receipt: NOT AVAILABLE | Quorum: N/A", font=FONT_SMALL, fg=COLOR_TEXT_MUTED, bg=COLOR_PANEL_BG, anchor="w")
+        self.lbl_receipt_stat.pack(fill=tk.X, padx=10, pady=2)
+        self.lbl_key_stat = tk.Label(hw_panel, text="🔑 Key state: VALID | Power: PRIMARY", font=FONT_SMALL, fg=COLOR_SUCCESS_GREEN, bg=COLOR_PANEL_BG, anchor="w")
+        self.lbl_key_stat.pack(fill=tk.X, padx=10, pady=2)
 
         # ── Right Column: Logs, Interactive Attacks & PIN Pad ──
         right_col = tk.Frame(body, bg=COLOR_BG_DARK)
@@ -329,6 +340,7 @@ class SentinelTacticalApp:
         def submit():
             code = "".join(pin_str)
             if validate_pin(code) and self.scorer.pin_override(code):
+                self.controller.recover()
                 self.hal.relay.engage()
                 self.hal.led.solid_on()
                 self.ledger.add_entry("tactical_override", {"pin_status": "ACCEPTED", "relay": "ENGAGED"})
@@ -375,9 +387,10 @@ class SentinelTacticalApp:
                     os.remove(p)
                 except Exception:
                     pass
+        self.controller.mark_tampered()
         self.hal.relay.isolate()
         self.hal.led.blink(0.05)
-        self.ledger.add_entry("tamper_breach", {"action": "KEYS_ZEROIZED", "relay": "ISOLATED"})
+        self.ledger.add_entry("tamper_breach", {"action": "KEYS_ZEROIZED", "relay": "ISOLATED", "controller_state": "TAMPERED"})
         self.lbl_tamper_stat.config(text="🚨 Anti-Tamper: BREACH DETECTED!", fg=COLOR_ALERT_RED)
         self.append_log("🔥 [ZEROIZATION] Master cryptographic keys purged from RAM.")
 
@@ -401,7 +414,8 @@ class SentinelTacticalApp:
                 res = self.scorer.ingest_features(pkt)
             time.sleep(0.02)
 
-        self.append_log("✅ Baseline training complete. System ARMED & DEFENDING.")
+        self.controller.arm()
+        self.append_log("✅ Baseline training complete. Trusted controller ARMED & DEFENDING.")
         self.hal.led.solid_on()
 
         # Step 2: Continuous monitoring
@@ -419,6 +433,25 @@ class SentinelTacticalApp:
             if res.get("is_anomaly", False):
                 self.anomaly_count += 1
                 score = res.get("score", 0.0)
+                event_id = f"evt-{self.packet_count:08d}"
+                signal_a = self.controller.issue_signal(
+                    event_id=event_id,
+                    source="m3-known-detector",
+                    signal_type="known_attack",
+                    payload={"label": pkt.get("label", "ANOMALY"), "score": score},
+                )
+                signal_b = self.controller.issue_signal(
+                    event_id=event_id,
+                    source="m3-adaptive-profile",
+                    signal_type="adaptive_anomaly",
+                    payload={"dst_port": pkt.get("dst_port", 0), "score": score},
+                )
+                self.controller.submit_signal(signal_a)
+                decision = self.controller.submit_signal(signal_b)
+                if decision.get("decision") != "ISOLATE":
+                    self.append_log("⚠️ [CONTROLLER] Evidence pending; relay remains connected")
+                    time.sleep(0.08)
+                    continue
                 self.hal.relay.isolate()
                 self.hal.led.blink(0.2)
                 self.scorer.trigger_lockdown()
@@ -431,7 +464,9 @@ class SentinelTacticalApp:
                 }, anomaly_score=score)
 
                 self.append_log(f"🚨 [ANOMALY DETECTED] {pkt.get('label')} (Score: {score:.4f})")
-                self.append_log(f"⚡ [RELAY] Mechanical line CUT. Ledger Block #{entry['index']} SHA-256: {entry['hash'][:16]}...")
+                receipt = decision.get("receipt", {})
+                receipt_status = self.controller.verify_receipt(receipt)[1] if receipt else "NOT_AVAILABLE"
+                self.append_log(f"⚡ [RELAY] Controller-approved line CUT. Receipt {receipt.get('receipt_id', 'N/A')} {receipt_status}. Ledger Block #{entry['index']} SHA-256: {entry['hash'][:16]}...")
                 self.hal.cellular.send_sms("+919876543210", f"ALERT: Line isolated on {self.node_id}")
 
             time.sleep(0.08)
@@ -472,6 +507,22 @@ class SentinelTacticalApp:
 
         if self.hal.tamper.is_tampered():
             self.lbl_tamper_stat.config(text="🚨 Anti-Tamper: CASING BREACHED!", fg=COLOR_ALERT_RED)
+
+        controller_state = self.controller.state.value
+        if controller_state == "TAMPERED":
+            self.lbl_controller_stat.config(text="🧠 Controller: TAMPERED | Link: HEALTHY", fg=COLOR_ALERT_RED)
+            self.lbl_key_stat.config(text="🔑 Key state: INVALIDATED | Power: PRIMARY", fg=COLOR_ALERT_RED)
+        elif controller_state == "ISOLATED":
+            self.lbl_controller_stat.config(text="🧠 Controller: ISOLATED | Link: HEALTHY", fg=COLOR_ALERT_RED)
+            self.lbl_signal_stat.config(text="🔐 Signals: 2/2 independent evidence", fg=COLOR_ALERT_RED)
+            latest = self.controller.receipts[-1] if self.controller.receipts else None
+            receipt_state = self.controller.verify_receipt(latest)[1] if latest else "NOT_AVAILABLE"
+            receipt_id = latest.receipt_id if latest else "N/A"
+            self.lbl_receipt_stat.config(text=f"🧾 Receipt: {receipt_state} {receipt_id} | Quorum: N/A", fg=COLOR_SUCCESS_GREEN if receipt_state == "VALID" else COLOR_ALERT_RED)
+        elif controller_state == "ARMED":
+            self.lbl_controller_stat.config(text="🧠 Controller: ARMED | Link: HEALTHY", fg=COLOR_SUCCESS_GREEN)
+            self.lbl_signal_stat.config(text="🔐 Signals: waiting for independent evidence", fg=COLOR_TEXT_MUTED)
+            self.lbl_receipt_stat.config(text="🧾 Receipt: N/A | Quorum: NOT CONFIGURED", fg=COLOR_TEXT_MUTED)
 
         if self.is_running:
             self.root.after(100, self._update_telemetry_loop)

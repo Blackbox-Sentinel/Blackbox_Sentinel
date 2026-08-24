@@ -49,6 +49,12 @@ hw_state = {
     "cellular": {"state": "REGISTERED", "rssi": "28/31", "sms_log": []},
     "mesh": {"state": "LISTENING", "broadcasts": []},
     "keystore": {"state": "MOUNTED", "keys_present": True},
+    "controller": {"state": "SAFE", "link": "HEALTHY", "decision": "WAITING", "last_transition": None},
+    "signals": {"required": ["known_attack", "adaptive_anomaly"], "received": [], "decision": "WAITING"},
+    "quorum": {"required": 0, "received": 0, "decision": "NOT_CONFIGURED"},
+    "receipt": {"status": "NOT_AVAILABLE", "receipt_id": None, "counter": None, "hash": None, "external_witness": "NOT_CONFIGURED"},
+    "power": {"state": "PRIMARY", "hold_up": "NOT_CONFIGURED"},
+    "recovery": {"state": "LOCKED", "last_result": None},
     "score_history": [],
     "current_score": 0.0,
     "latest_packet": None,
@@ -81,6 +87,7 @@ class HardwareSimEngine:
         from predict import AnomalyScorer, DeviceState
         from ledger import HashChainLedger
         from traffic_generator import TrafficGenerator
+        from security.trusted_controller import TrustedController
 
         self.DeviceState = DeviceState
 
@@ -102,6 +109,7 @@ class HardwareSimEngine:
             node_id="AEDN-RACK-01"
         )
         self.scorer = AnomalyScorer()
+        self.controller = TrustedController(secret=os.urandom(32), quorum_required=0, freshness_window_seconds=60)
         self.ledger = HashChainLedger(os.path.join(data_dir, "hw_sim_ledger.json"))
         self.traffic_gen = TrafficGenerator()
         self.running = False
@@ -112,7 +120,35 @@ class HardwareSimEngine:
             "timestamp": time.time()
         })
         self._sync_ledger()
+        self._sync_controller()
         push_event("System booted. HAL initialized in SIM mode.", "success")
+
+    def _sync_controller(self):
+        """Publish safe controller telemetry for M4 without exposing secrets."""
+        snapshot = self.controller.snapshot()
+        with state_lock:
+            hw_state["controller"] = {
+                "state": snapshot["controller_state"],
+                "link": "HEALTHY",
+                "decision": snapshot["quorum"]["decision"],
+                "last_transition": time.strftime("%H:%M:%S"),
+            }
+            hw_state["signals"] = {
+                "required": list(self.controller.required_signals),
+                "received": snapshot["signals"],
+                "decision": snapshot["quorum"]["decision"],
+            }
+            hw_state["quorum"] = snapshot["quorum"]
+            if snapshot["receipt"]:
+                receipt = snapshot["receipt"]
+                hw_state["receipt"] = {
+                    "status": snapshot["receipt_verification"],
+                    "receipt_id": receipt["receipt_id"],
+                    "counter": receipt["counter"],
+                    "hash": receipt["receipt_hash"][:16] + "...",
+                    "external_witness": receipt["external_witness_status"],
+                }
+            hw_state["power"] = {"state": "PRIMARY", "hold_up": "NOT_CONFIGURED"}
 
     def _sync_ledger(self):
         with state_lock:
@@ -155,6 +191,7 @@ class HardwareSimEngine:
                     pass
             shutil.rmtree(self.keys_dir, ignore_errors=True)
 
+        self.controller.mark_tampered()
         self.hal.relay.isolate()
         self.hal.led.blink(0.05)
         self.scorer.trigger_lockdown()
@@ -168,6 +205,7 @@ class HardwareSimEngine:
 
         self.hal.cellular.send_sms("+919876543210",
             "CRITICAL: AEDN-RACK-01 tamper breach. Keys zeroized.")
+        self._sync_controller()
         with state_lock:
             hw_state["cellular"]["sms_log"].append({
                 "time": time.strftime("%H:%M:%S"),
@@ -222,6 +260,8 @@ class HardwareSimEngine:
             hw_state["led"]["color"] = "green"
 
         self.hal.led.solid_on()
+        self.controller.arm()
+        self._sync_controller()
         self.ledger.add_entry("state_transition", {"from": "CALIBRATING", "to": "ARMED"})
         self._sync_ledger()
         push_event("Calibration complete. System ARMED & defending.", "success")
@@ -272,6 +312,21 @@ class HardwareSimEngine:
 
         res = self.scorer.ingest_features(pkt)
         score = res.get("score", 0.0)
+        event_id = f"evt-{int(time.time() * 1000)}"
+        signal_a = self.controller.issue_signal(
+            event_id=event_id,
+            source="m3-known-detector",
+            signal_type="known_attack",
+            payload={"label": pkt.get("label", attack_type), "score": score},
+        )
+        signal_b = self.controller.issue_signal(
+            event_id=event_id,
+            source="m3-adaptive-profile",
+            signal_type="adaptive_anomaly",
+            payload={"port": int(pkt["dst_port"]), "score": score},
+        )
+        self.controller.submit_signal(signal_a)
+        decision = self.controller.submit_signal(signal_b)
 
         with state_lock:
             hw_state["packets_total"] += 1
@@ -286,8 +341,8 @@ class HardwareSimEngine:
                 "label": pkt.get("label", "UNKNOWN")
             }
 
-        if res.get("is_anomaly", False):
-            # 1. Fire relay
+        if res.get("is_anomaly", False) and decision.get("decision") == "ISOLATE":
+            # 1. Fire relay only after both independent signals are accepted.
             self.hal.relay.isolate()
             self.hal.led.blink(0.2)
             self.scorer.trigger_lockdown()
@@ -305,6 +360,7 @@ class HardwareSimEngine:
                 "relay": "ISOLATED"
             }, anomaly_score=score)
             self._sync_ledger()
+            self._sync_controller()
             push_event(f"SHA-256 Block #{entry['index']} committed: {entry['hash'][:16]}...", "info")
 
             # 3. SMS
@@ -326,10 +382,14 @@ class HardwareSimEngine:
                     "threat": pkt.get("label", attack_type)
                 })
             push_event("ESP-NOW mesh gossip broadcast to peer nodes.", "info")
+        elif res.get("is_anomaly", False):
+            self._sync_controller()
+            push_event("Anomaly held pending: trusted controller requires both independent signals.", "warning")
 
     def pin_override(self, pin="1234"):
         """Phase 4: Tactical touchscreen PIN override."""
         if self.scorer.pin_override(pin):
+            self.controller.recover()
             self.hal.relay.engage()
             self.hal.led.solid_on()
             with state_lock:
@@ -342,9 +402,14 @@ class HardwareSimEngine:
 
             self.ledger.add_entry("tactical_override", {"pin": "ACCEPTED", "relay": "RESTORED"})
             self._sync_ledger()
+            self._sync_controller()
+            with state_lock:
+                hw_state["recovery"] = {"state": "RECOVERED", "last_result": "ACCEPTED"}
             push_event("PIN override accepted. Relay RESTORED. System ARMED.", "success")
             return True
         else:
+            with state_lock:
+                hw_state["recovery"] = {"state": "LOCKED", "last_result": "REJECTED"}
             push_event("PIN REJECTED. Line remains CUT.", "warning")
             return False
 
