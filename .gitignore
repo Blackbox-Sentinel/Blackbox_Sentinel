@@ -57,3 +57,6 @@ desktop.ini
 # CICIDS datasets (large, regenerated)
 datasets/
 ml/data/*.csv
+
+# Demo recordings (large binary blobs, don't belong in git history)
+m2-systems/demos/*.mp4
