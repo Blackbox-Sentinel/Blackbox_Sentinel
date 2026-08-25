@@ -64,7 +64,7 @@ class Dashboard(QMainWindow):
         layout.addWidget(self.status_label, 0, 0, 1, 2)
 
         self.telemetry_label = QLabel("PKTS: 0   ALERTS: 0")
-        self.telemetry_label.setStyleSheet("font-size: 11px; font-weight: bold;")
+        self.telemetry_label.setStyleSheet("font-size: 11px; color: #1f2937; font-weight: bold;")
         layout.addWidget(self.telemetry_label, 0, 2, 1, 2)
 
         self.relay_label = QLabel("RELAY: UNKNOWN")
@@ -86,12 +86,12 @@ class Dashboard(QMainWindow):
             ),
             start=1,
         ):
-            widget.setStyleSheet("font-size: 9px; font-weight: bold;")
+            widget.setStyleSheet("font-size: 9px; color: #1f2937; font-weight: bold;")
             layout.addWidget(widget, row, 0, 1, 4)
 
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
-        self.log_box.setStyleSheet("font-size: 8px;")
+        self.log_box.setStyleSheet("font-size: 8px; color: #111827; background: #ffffff;")
         layout.addWidget(self.log_box, 8, 0, 1, 4)
 
         self.attack_btn = QPushButton("ATTACK")
@@ -110,7 +110,10 @@ class Dashboard(QMainWindow):
         layout.addWidget(self.pin_btn, 9, 2)
         layout.addWidget(self.refresh_btn, 9, 3)
 
-        container.setStyleSheet("QWidget { background: #f3f5f7; }")
+        container.setStyleSheet(
+            "QWidget { background: #f3f5f7; } "
+            "QPushButton { color: #111827; background: #e5e7eb; border: 1px solid #9ca3af; }"
+        )
         self.setCentralWidget(container)
 
     def _log(self, message: str) -> None:
