@@ -8,6 +8,23 @@ import os
 from typing import Callable, Optional, Dict, Any
 from .hal_base import RelayInterface, TamperInterface, LEDInterface, CellularInterface, MeshInterface
 
+
+def _first_present(payload: Dict[str, Any], *keys: str, default: Any) -> Any:
+    """Return the first key present in payload with a non-None value.
+
+    Real callers of RealMesh.broadcast_threat() don't agree on field names
+    (sentinel_pipeline.py uses threat_score/source_node, run_simulation.py
+    uses threat_type/victim_port, hw_simulator_server.py uses threat/score),
+    unlike the sim HAL which forwards the dict opaquely. The ESP32's GOSSIP:
+    format needs specific typed fields, so this picks by alias instead of a
+    single fixed key.
+    """
+    for key in keys:
+        if key in payload and payload[key] is not None:
+            return payload[key]
+    return default
+
+
 # ── Safe GPIO & Serial Imports ─────────────────────────────────────────────────
 try:
     from gpiozero import OutputDevice, Button, LED
@@ -181,7 +198,16 @@ class RealMesh(MeshInterface):
         if not self.ser:
             return False
         try:
-            line = f"MESH_BROADCAST:{threat_payload}\n"
+            threat_type = str(_first_present(
+                threat_payload, "threat_type", "threat", "label", default="UNKNOWN"
+            )).replace(":", "_").replace("\n", "_").replace("\r", "_")
+            score = float(_first_present(
+                threat_payload, "threat_score", "score", "anomaly_score", default=0.0
+            ))
+            port = int(_first_present(
+                threat_payload, "victim_port", "port", "dst_port", default=0
+            ))
+            line = f"GOSSIP:{threat_type}:{score}:{port}\n"
             self.ser.write(line.encode("utf-8"))
             return True
         except Exception as e:

@@ -1035,3 +1035,88 @@ with mtime evidence, not just asserted:
   did not touch the other's, at all, twice in a row.
 
 **Step 4: CLOSED.**
+
+---
+
+### 9. M2-1 wire-format mismatch (B1) — RESOLVED
+
+`B1_Authenticated_Envelope_Draft.md` (§1d) flagged that
+`common/hal/drivers_real.py`'s `RealMesh.broadcast_threat()` wrote
+`MESH_BROADCAST:{threat_payload}\n` — Python's `str(dict)` repr — while
+`m1-hardware/src/esp32_coprocessor.ino`'s `processHostCommand()` parser
+(`:109-134`) only recognizes `ISOLATE`/`CUT`, `ENGAGE`/`RESTORE`, `ARM`,
+`DISARM`, `PING`, and a colon-delimited `GOSSIP:<type>:<score>:<port>`
+command. `MESH_BROADCAST:` matched none of those — the message would
+have been silently dropped by the firmware's parser on real hardware,
+every time.
+
+**Fix applied** in `common/hal/drivers_real.py`: `broadcast_threat()` now
+builds `GOSSIP:{threat_type}:{score}:{port}\n`, matching the firmware
+parser's `cmd.indexOf(':', ...)` / `substring()` field extraction at
+`.ino:123-130` exactly. Because the three real callers of
+`broadcast_threat()` don't agree on payload key names
+(`sentinel_pipeline.py:270-276` uses `threat_score`/no port at all;
+`m2-systems/sim/run_simulation.py:220-225` uses `threat_type`/`victim_port`/no
+score; `m4-gui-venture/hw_simulator_server.py:378` uses `threat`/`score`),
+a small `_first_present()` helper picks fields by alias with explicit
+`is not None` checks (not `or`-chaining, which would incorrectly skip a
+legitimate `score=0.0` or `port=0`), falling back to `"UNKNOWN"`/`0.0`/`0`
+when a caller omits a field entirely. Extraction, casting, and the write
+all happen inside one `try/except`, so a malformed payload (e.g. a
+non-numeric score) returns `False` instead of raising. `threat_type` is
+sanitized (`:`, `\n`, `\r` stripped) since the firmware's parser has no
+escaping of its own and an embedded `\n` would truncate
+`Serial.readStringUntil('\n')` mid-message.
+
+Confirmed still true, explicitly out of scope for this fix: `RealRelay`
+still drives Pi GPIO 17 directly rather than issuing `ISOLATE`/`ENGAGE`
+over the ESP32 serial link (B4's relay-bypass finding), and
+`RealMesh.register_peer_callback()` still has no read loop consuming the
+firmware's outgoing JSON lines (B3's dead-code finding). Also confirmed
+via `.ino:96-105`: the `GOSSIP:` format needs no sender/node-ID field —
+`origin_node` is hardcoded to `"AEDN-RACK-01"` firmware-side and
+`timestamp` is computed from `millis()`, neither taken from serial input
+— though that hardcoded literal is itself a separate M1-owned gap for any
+multi-node deployment, not touched here.
+
+**Verification (mock serial, no ESP32 hardware attached — see caveat
+below):**
+
+```
+--- sentinel_pipeline.py:270-276 shape (no threat_type/port keys at all) ---
+raw bytes written: b'GOSSIP:UNKNOWN:-0.088:0\n'
+firmware-side parse -> threat='UNKNOWN' score=-0.088 port=0
+
+--- score=0.0 explicit, must NOT be skipped for a later non-zero key ---
+raw bytes written: b'GOSSIP:ZERO_SCORE_TEST:0.0:80\n'
+firmware-side parse -> threat='ZERO_SCORE_TEST' score=0.0 port=80
+
+--- malformed score (non-numeric string) must be caught, not crash ---
+broadcast_threat() returned: False
+(nothing written)
+
+--- threat_type containing ':' '\n' '\r' must be sanitized ---
+raw bytes written: b'GOSSIP:EVIL_INJECT_DISARM_TYPE:-0.5:1337\n'
+
+--- very small magnitude score -> Python default float str is scientific ---
+raw bytes written: b'GOSSIP:SCI_NOTATION_SMALL:1.234e-08:443\n'
+firmware-side parse -> threat='SCI_NOTATION_SMALL' score=1.234e-08 port=443
+```
+
+Full run covered all three real caller shapes, both falsy-zero cases
+(`score=0.0`, `port=0`), the malformed-payload case, colon/`\n`/`\r`
+injection sanitization, and three scientific-notation magnitudes
+(`1.234e-08`, `6.7e+16`, `-1.234e-08`) — all ten produced the expected
+`GOSSIP:` line and re-parsed correctly via a line-by-line Python
+transcription of the firmware's own colon-split parsing logic. Full repo
+test suite: `17/17 passed`.
+
+**Caveat, stated plainly:** no physical ESP32 or Arduino toolchain is
+available in this environment (per B2 §1a/1b, this repo doesn't even pin
+a board or core version), so the firmware side of this was never
+compiled or executed — only a faithful Python re-implementation of its
+parsing arithmetic. Whether `String::toFloat()` (documented as wrapping
+`atof()`/`strtod()` in the Arduino core) accepts scientific notation is
+stated here as documented C-standard-library behavior, not as something
+verified against this project's actual firmware build. Hardware-in-loop
+testing of this fix is still outstanding.
