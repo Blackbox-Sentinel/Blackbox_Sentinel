@@ -87,7 +87,7 @@ class HardwareSimEngine:
         from predict import AnomalyScorer, DeviceState
         from ledger import HashChainLedger
         from traffic_generator import TrafficGenerator
-        from security.trusted_controller import TrustedController
+        from security.trusted_controller import TrustedController, load_or_create_shared_secret
 
         self.DeviceState = DeviceState
 
@@ -109,7 +109,7 @@ class HardwareSimEngine:
             node_id="AEDN-RACK-01"
         )
         self.scorer = AnomalyScorer()
-        self.controller = TrustedController(secret=os.urandom(32), quorum_required=0, freshness_window_seconds=60)
+        self.controller = TrustedController(secret=load_or_create_shared_secret(), quorum_required=0, freshness_window_seconds=60)
         self.ledger = HashChainLedger(os.path.join(data_dir, "hw_sim_ledger.json"))
         self.traffic_gen = TrafficGenerator()
         self.running = False

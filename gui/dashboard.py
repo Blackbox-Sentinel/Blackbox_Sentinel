@@ -27,7 +27,7 @@ from PyQt6.QtWidgets import (
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 
-from security.trusted_controller import ControllerState, TrustedController
+from security.trusted_controller import ControllerState, TrustedController, load_or_create_shared_secret
 sys.path.insert(0, os.path.join(ROOT, "m4-gui-venture", "src"))
 from pin_security import validate_pin
 
@@ -39,7 +39,7 @@ class Dashboard(QMainWindow):
         super().__init__()
         self.setWindowTitle("BlackBox Sentinel")
         self.setFixedSize(480, 320)
-        self.controller = TrustedController(secret=b"phase2-demo-secret", quorum_required=0, freshness_window_seconds=60)
+        self.controller = TrustedController(secret=load_or_create_shared_secret(), quorum_required=0, freshness_window_seconds=60)
         self.controller.arm()
         self.is_locked = False
         self.packet_count = 0

@@ -10,11 +10,33 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import secrets
 import time
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any
+
+
+DEFAULT_SHARED_SECRET_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "m3-ml-ledger", "data", "controller_secret.bin"
+)
+
+
+def load_or_create_shared_secret(path: str | None = None) -> bytes:
+    """Load the simulation-phase shared HMAC secret, generating it once if absent.
+
+    Every in-process TrustedController instance must use the same secret to
+    verify each other's signals/votes/receipts. This is a simulation-phase
+    convenience, not a hardware-backed key-provisioning mechanism.
+    """
+    secret_path = os.path.abspath(path or DEFAULT_SHARED_SECRET_PATH)
+    os.makedirs(os.path.dirname(secret_path), exist_ok=True)
+    if not os.path.exists(secret_path):
+        with open(secret_path, "wb") as f:
+            f.write(secrets.token_bytes(32))
+    with open(secret_path, "rb") as f:
+        return f.read()
 
 
 class ControllerState(str, Enum):

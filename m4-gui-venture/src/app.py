@@ -42,7 +42,7 @@ from predict import AnomalyScorer, DeviceState
 from ledger import HashChainLedger
 from traffic_generator import TrafficGenerator
 from pin_security import validate_pin
-from security.trusted_controller import TrustedController
+from security.trusted_controller import TrustedController, load_or_create_shared_secret
 
 # ── Aesthetic Styling Constants ──
 WINDOW_WIDTH = 800
@@ -95,7 +95,7 @@ class SentinelTacticalApp:
             node_id=self.node_id
         )
         self.scorer = AnomalyScorer()
-        self.controller = TrustedController(secret=os.urandom(32), quorum_required=0)
+        self.controller = TrustedController(secret=load_or_create_shared_secret(), quorum_required=0)
         self.ledger = HashChainLedger(self.ledger_path)
         self.traffic_gen = TrafficGenerator()
 
