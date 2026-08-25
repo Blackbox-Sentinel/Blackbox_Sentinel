@@ -20,6 +20,25 @@ From the repository root:
 python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -r requirements.txt
+```
+
+Run the Phase 2 software vertical slice in one terminal:
+
+```bash
+python3 integration/phase2_vertical_slice.py \\
+  --output m3-ml-ledger/data/phase2_telemetry.jsonl
+```
+
+Run the canonical 480×320 dashboard in a second terminal:
+
+```bash
+python3 gui/dashboard.py \\
+  --telemetry-file m3-ml-ledger/data/phase2_telemetry.jsonl
+```
+
+For the dashboard without the vertical-slice stream, use:
+
+```bash
 python3 gui/dashboard.py
 ```
 
@@ -94,7 +113,9 @@ The real hardware implementation must authenticate these fields at the controlle
 - [ ] Replace simulation authentication with real controller-side firmware enforcement.
 - [ ] Define and implement authenticated peer quorum with M1/M2/M3.
 - [ ] Add hardware-backed key invalidation and dedicated hold-up power path.
-- [ ] Connect the GUI to live authenticated telemetry instead of local simulation state.
+- [x] Connect the GUI to the normalized Phase 2 JSONL telemetry stream.
+- [x] Run the software vertical slice from M2 transport through M3 receipt to M4 display.
+- [ ] Connect the GUI to live authenticated hardware telemetry instead of the software simulation stream.
 
 ## Directory layout
 
@@ -102,6 +123,9 @@ The real hardware implementation must authenticate these fields at the controlle
 Blackbox_Sentinel/
 ├── gui/
 │   └── dashboard.py          # Canonical compact 480×320 touchscreen dashboard
+├── integration/
+│   ├── telemetry.py          # Normalized M2/M3-to-M4 telemetry contract
+│   └── phase2_vertical_slice.py # Repeatable software-only Phase 2 demo
 ├── security/
 │   └── trusted_controller.py # Simulation trusted-controller policy and receipts
 ├── m4-gui-venture/
@@ -113,5 +137,6 @@ Blackbox_Sentinel/
 ├── docs/
 │   └── Patent_Scope_Upgrade_Implementation.md
 └── tests/
+    ├── test_phase2_vertical_slice.py
     └── test_trusted_controller.py
 ```
