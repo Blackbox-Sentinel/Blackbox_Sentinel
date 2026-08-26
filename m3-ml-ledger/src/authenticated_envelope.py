@@ -26,9 +26,11 @@ import time
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from m3_contract import TRANSPORT_AUTH_ALGORITHM
+
 
 ENVELOPE_VERSION = 1
-AUTH_ALGORITHM = "HMAC-SHA256"
+AUTH_ALGORITHM = TRANSPORT_AUTH_ALGORITHM
 
 
 def _canonical_json(value: Mapping[str, Any]) -> bytes:

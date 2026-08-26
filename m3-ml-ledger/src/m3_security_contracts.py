@@ -34,9 +34,11 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 from cryptography.exceptions import InvalidSignature
 
+from m3_contract import RECEIPT_SIGNATURE_ALGORITHM
+
 
 RECEIPT_VERSION = 1
-RECEIPT_ALGORITHM = "Ed25519"
+RECEIPT_ALGORITHM = RECEIPT_SIGNATURE_ALGORITHM
 
 
 def _canonical_json(value: Mapping[str, Any]) -> bytes:
