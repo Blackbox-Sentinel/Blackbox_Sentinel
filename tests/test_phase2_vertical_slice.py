@@ -48,7 +48,11 @@ def test_phase2_vertical_slice_emits_required_states(tmp_path):
     assert approved.receipt_status == "VALID"
     assert approved.quorum_state == "APPROVED"
     assert len(approved.signals) == 2
+    assert {signal["details"]["transport"] for signal in approved.signals} == {"M2EvidenceTransport"}
+    assert {vote["voter_id"] for vote in approved.quorum_votes} == {"node-a", "node-b"}
+    assert all(vote["authenticated"] and vote["fresh"] for vote in approved.quorum_votes)
     assert approved.transport_auth == "VERIFIED"
+
     assert approved.freshness_status == "FRESH"
     assert approved.transport_sequence is not None
 

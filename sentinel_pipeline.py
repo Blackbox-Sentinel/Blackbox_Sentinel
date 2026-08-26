@@ -36,10 +36,12 @@ sys.path.insert(0, os.path.join(ROOT, "common"))
 from hal import get_hal
 from ledger import HashChainLedger
 from predict_v3 import AnomalyScorer, DeviceState
+from m3_decision_path import M3DecisionPath
 
 
 # ─── Configuration ────────────────────────────────────────────
 LEDGER_PATH = os.path.join(ROOT, "m3-ml-ledger", "data", "sentinel_ledger.json")
+COUNTER_PATH = os.path.join(ROOT, "m3-ml-ledger", "data", "receipt_counter.txt")
 SCORE_LOG_PATH = os.path.join(ROOT, "m3-ml-ledger", "data", "scores.jsonl")
 KEYS_DIR = os.getenv("SENTINEL_KEYS_DIR", "/run/sentinel/keys")
 CAPTURE_INTERFACE = os.getenv("SENTINEL_INTERFACE", "br0")
@@ -55,8 +57,9 @@ class SentinelPipeline:
         1. Boot -> Calibration mode (ingest baseline traffic)
         2. Baseline collected -> Train model -> ARM
         3. Armed -> Live scoring on each packet
-        4. Anomaly -> Fire relay -> Log to SHA-256 ledger -> OOB SMS -> Mesh Gossip -> LOCKDOWN
+        4. Anomaly -> M3 evidence/policy path -> normalized telemetry -> M1 handoff when approved
         5. PIN override -> Re-engage relay -> Return to ARMED
+
         6. Enclosure tamper -> Zeroize volatile RAM keys -> Lock down
     """
 
@@ -77,12 +80,23 @@ class SentinelPipeline:
             organization_id=os.getenv("SENTINEL_ORGANIZATION_ID", "default_organization")
         )
         self.ledger = HashChainLedger(LEDGER_PATH)
+        self.decision_path = M3DecisionPath(
+            ledger=self.ledger,
+            node_id=NODE_ID,
+            organization_id=self.scorer.organization_id,
+            counter_path=COUNTER_PATH,
+            controller_id=os.getenv("SENTINEL_CONTROLLER_ID", "sim-controller"),
+            key_epoch=int(os.getenv("SENTINEL_KEY_EPOCH", "1")),
+        )
+        self.latest_telemetry = {}
 
         # State
         self.running = False
+
         self.packet_count = 0
+        self.window_count = 0
         self.anomaly_count = 0
-        
+
         # Log boot event
         self.ledger.add_entry("system_boot", {
             "node_id": NODE_ID,
@@ -222,11 +236,40 @@ class SentinelPipeline:
                 )
             return
 
+        self.window_count += 1
+
+        # Every post-calibration result is available to M4 through the same
+        # normalized telemetry contract. A benign result creates no containment
+        # request; an anomalous result is still only evidence at this point.
+        decision = self.decision_path.submit(
+            model_result=result,
+            incident_id=f"{NODE_ID}:window-{self.window_count}",
+            now=time.time(),
+        )
+        self.latest_telemetry = decision.telemetry
+        if result.get("is_anomaly", False) or decision.status != "BENIGN":
+            self.ledger.add_entry(
+                "m3_policy_decision",
+                {
+                    "organization_id": result.get("organization_id"),
+                    "incident_id": decision.incident_id,
+                    "status": decision.status,
+                    "reason": decision.reason,
+                    "telemetry_schema_version": decision.telemetry.get("schema_version"),
+                    "physical_relay_requested": decision.telemetry["actuation"].get("relay_requested", False),
+                },
+                anomaly_score=result.get("score", 0.0),
+            )
+
+        if not result.get("is_anomaly", False):
+            return
+
         # ── Anomaly detected ──
         if result.get("is_anomaly", False):
             self.anomaly_count += 1
+
             score = result.get("score", 0.0)
-            
+
             print(
                 f"\n🚨 [ALERT] ANOMALY #{self.anomaly_count} DETECTED! "
                 f"v3 score: {score:.4f} | "
@@ -239,46 +282,56 @@ class SentinelPipeline:
                 f"tcp_ratio={features.get('tcp_ratio', 0.0):.3f}"
             )
 
-            # 1. Fire physical/mock mechanical isolation relay
-            self.hal.relay.isolate()
-            self.hal.led.blink(0.2)
-            self.scorer.trigger_lockdown()
+            print(
+                f"  [M3 POLICY] status={decision.status} | reason={decision.reason}"
+            )
+            print(
+                "  [M4 TELEMETRY] normalized event prepared; "
+                "physical relay verification remains pending M1 hardware"
+            )
 
-            # 2. Commit SHA-256 block to forensic ledger
-            entry = self.ledger.add_entry(
-                "anomaly_lockdown",
-                {
-                    "features": features,
-                    "score": score,
-                    "prediction": result.get("combined_prediction", "ATTACK"),
+            if decision.status == "CONTAINMENT_ACCEPTED":
+                # The software controller accepted a verified receipt. This is
+                # not physical ESP32 enforcement; M1 must bind the same contract
+                # before relay success can be reported as complete.
+                self.hal.led.blink(0.2)
+                self.scorer.trigger_lockdown()
+                self.hal.mesh.broadcast_threat({
+                    "source_node": NODE_ID,
+                    "threat_score": score,
                     "organization_id": result.get("organization_id"),
-                    "window_number": self.packet_count,
-                    "action": "RELAY_ISOLATED",
-                },
-                anomaly_score=score,
-            )
+                    "global_prediction": result.get("global_prediction"),
+                    "local_prediction": result.get("local_prediction"),
+                    "policy_status": decision.status,
+                })
+                print(
+                    "[PIPELINE] Software containment accepted; physical relay action "
+                    "is still an M1 hardware-handoff requirement.\n"
+                )
+            else:
+                print(
+                    "[PIPELINE] No physical isolation requested: independent authenticated "
+                    "evidence and policy approval are still required.\n"
+                )
 
-            print(f"  📋 [LEDGER] Block #{entry['index']} SHA-256: {entry['hash'][:24]}...")
+    def get_latest_telemetry(self) -> dict:
+        """Return the latest normalized M3 event for an M4 adapter."""
+        return dict(self.latest_telemetry)
 
-            # 3. Out-of-band cellular SMS alert (SIM800L)
-            self.hal.cellular.send_sms(
-                EMERGENCY_SMS,
-                f"ALERT: Node {NODE_ID} breach detected! Data line physically isolated. Ledger SHA: {entry['hash'][:10]}"
-            )
-
-            # 4. ESP-NOW mesh lateral threat gossip
-            self.hal.mesh.broadcast_threat({
-                "source_node": NODE_ID,
-                "threat_score": score,
-                "organization_id": result.get("organization_id"),
-                "global_prediction": result.get("global_prediction"),
-                "local_prediction": result.get("local_prediction"),
-            })
-
-            print("[PIPELINE] 🔒 LOCKDOWN ACTIVE — Data line mechanically CUT.")
-            print("[PIPELINE] Awaiting on-device touchscreen PIN entry to restore data flow...\n")
+    def submit_security_evidence(self, *, model_result: dict, signals, incident_id: str, quorum_votes=(), now=None) -> dict:
+        """Allow M2/M3 adapters to submit independent evidence through one path."""
+        decision = self.decision_path.submit(
+            model_result=model_result,
+            signals=signals,
+            incident_id=incident_id,
+            quorum_votes=quorum_votes,
+            now=now,
+        )
+        self.latest_telemetry = decision.telemetry
+        return decision.to_dict()
 
     def pin_override(self, pin: str) -> bool:
+
         """Handle Tactical Touchscreen PIN Override (Patent Claim 1)."""
         if self.scorer.pin_override(pin):
             self.hal.relay.engage()

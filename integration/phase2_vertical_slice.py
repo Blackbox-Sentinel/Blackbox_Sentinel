@@ -20,8 +20,13 @@ if str(ROOT) not in sys.path:
 M3_SRC = ROOT / "m3-ml-ledger" / "src"
 if str(M3_SRC) not in sys.path:
     sys.path.insert(0, str(M3_SRC))
+M2_SRC = ROOT / "m2-systems" / "src"
+if str(M2_SRC) not in sys.path:
+    sys.path.insert(0, str(M2_SRC))
 
 from authenticated_envelope import AuthenticatedEnvelope, ReplayProtector, SequenceAllocator  # noqa: E402
+from evidence_transport import M2EvidenceTransport  # noqa: E402
+
 from ledger import HashChainLedger  # noqa: E402
 from m3_security_contracts import (  # noqa: E402
     ContainmentReceiptService,
@@ -88,7 +93,24 @@ class Phase2VerticalSlice:
         self.sleep_seconds = max(0.0, sleep_seconds)
         self.writer = JsonlTelemetryWriter(self.output_path)
         self.transport = M2SimTransport(self.writer)
+        self.m2_transport = M2EvidenceTransport(
+            sender_id="node-a",
+            key=TRANSPORT_KEY,
+            key_id="phase2-transport-key",
+            key_epoch=1,
+            max_age_seconds=60.0,
+            future_skew_seconds=5.0,
+        )
+        self.m2_peer_transport = M2EvidenceTransport(
+            sender_id="node-b",
+            key=TRANSPORT_KEY,
+            key_id="phase2-transport-key",
+            key_epoch=1,
+            max_age_seconds=60.0,
+            future_skew_seconds=5.0,
+        )
         self.packet_count = 0
+
         self.alert_count = 0
         self.event_counter = 0
         self.events: list[NormalizedTelemetry] = []
@@ -146,26 +168,27 @@ class Phase2VerticalSlice:
             notes="Normal packet window received from M2 simulation.",
         )
 
-        signal_a = EvidenceSignal(
+        signal_a = self.m2_transport.submit_signal(
             signal_id="signal-known-001",
             source_id="known-detector",
             signal_type="known_attack",
             decision="CONFIRM",
-            authenticated=True,
-            fresh=True,
             confidence=0.98,
-            details={"score": -0.115},
+            details={"score": -0.115, "transport": "M2EvidenceTransport"},
+            timestamp=100.0,
+            now=100.0,
         )
-        signal_b = EvidenceSignal(
+        signal_b = self.m2_peer_transport.submit_signal(
             signal_id="signal-adaptive-001",
             source_id="adaptive-profile",
             signal_type="adaptive_anomaly",
             decision="CONFIRM",
-            authenticated=True,
-            fresh=True,
             confidence=0.91,
-            details={"score": -0.115},
+            details={"score": -0.115, "transport": "M2EvidenceTransport"},
+            timestamp=100.0,
+            now=100.0,
         )
+
         self.alert_count = 1
         self.emit(
             event_type="evidence_pending",
@@ -183,6 +206,8 @@ class Phase2VerticalSlice:
 
         gate = TwoSignalGate()
         decision = gate.evaluate(self.incident_id, [signal_a, signal_b])
+        self.evidence_digest = decision.evidence_digest
+
         self.quorum.start(
             incident_id=self.incident_id,
             evidence_digest=self.evidence_digest,
@@ -191,26 +216,27 @@ class Phase2VerticalSlice:
             started_at=100.0,
             deadline_seconds=10.0,
         )
-        first_vote = QuorumVote(
-            self.incident_id,
-            "node-a",
-            VoteDecision.CONFIRM,
-            self.evidence_digest,
-            1,
-            True,
-            True,
-            101.0,
+        first_vote = self.m2_transport.submit_vote(
+            incident_id=self.incident_id,
+            voter_id="node-a",
+            decision=VoteDecision.CONFIRM,
+            evidence_digest=self.evidence_digest,
+            vote_sequence=1,
+            received_at=101.0,
+            timestamp=101.0,
+            now=101.0,
         )
-        second_vote = QuorumVote(
-            self.incident_id,
-            "node-b",
-            VoteDecision.CONFIRM,
-            self.evidence_digest,
-            1,
-            True,
-            True,
-            102.0,
+        second_vote = self.m2_peer_transport.submit_vote(
+            incident_id=self.incident_id,
+            voter_id="node-b",
+            decision=VoteDecision.CONFIRM,
+            evidence_digest=self.evidence_digest,
+            vote_sequence=1,
+            received_at=102.0,
+            timestamp=102.0,
+            now=102.0,
         )
+
         self.quorum.add_vote(first_vote)
         quorum_state = self.quorum.add_vote(second_vote)
         quorum_snapshot = self.quorum.snapshot(self.incident_id)
