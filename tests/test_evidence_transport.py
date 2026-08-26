@@ -199,3 +199,36 @@ def test_quorum_state_machine_approves_with_two_authenticated_confirm_votes():
     quorum.add_vote(vote_a)
     state = quorum.add_vote(vote_b)
     assert state == QuorumState.APPROVED
+
+
+def test_shared_sequence_space_spans_signal_and_vote_submission():
+    """One transport, mixed message types: signal(seq=5), vote(seq=3), signal(seq=6).
+
+    ReplayProtector.accept()'s dedup key is (sender_id, key_epoch) only
+    (authenticated_envelope.py:212) -- no message_type. So a vote sequence
+    lower than an already-accepted signal's sequence, from the same
+    transport, must be rejected as out-of-order: this is the empirical
+    proof that M2EvidenceTransport's shared ReplayProtector/SequenceAllocator
+    design actually matters, not just a reasonable-sounding choice.
+    """
+    t = make_transport()
+    signal_envelope = t.build_signal_envelope(
+        signal_id="sig-shared-1", source_id="known-detector", signal_type="known_attack",
+        decision="CONFIRM", sequence=5, timestamp=100.0,
+    )
+    signal = t.authenticate_signal(signal_envelope, now=100.0)
+    assert signal.authenticated is True
+
+    vote_envelope = t.build_vote_envelope(
+        incident_id="incident-shared-1", voter_id="node-a", decision=VoteDecision.CONFIRM,
+        evidence_digest="d" * 64, vote_sequence=1, sequence=3, timestamp=100.0,
+    )
+    vote = t.authenticate_vote(vote_envelope, received_at=100.0, now=100.0)
+    assert vote.authenticated is False  # seq=3 <= 5, rejected as out-of-order across types
+
+    signal_envelope_2 = t.build_signal_envelope(
+        signal_id="sig-shared-2", source_id="known-detector", signal_type="known_attack",
+        decision="CONFIRM", sequence=6, timestamp=100.0,
+    )
+    signal_2 = t.authenticate_signal(signal_envelope_2, now=100.0)
+    assert signal_2.authenticated is True  # seq=6 > 5, accepted; 3's rejection didn't advance the counter

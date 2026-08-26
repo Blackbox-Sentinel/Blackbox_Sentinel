@@ -57,6 +57,12 @@ class M2EvidenceTransport:
         self.key = key
         self.key_id = key_id
         self.key_epoch = key_epoch
+        # Shared across signals and votes deliberately: ReplayProtector.accept()'s
+        # dedup key is identity = (envelope.sender_id, envelope.key_epoch) only
+        # (authenticated_envelope.py:212) -- message_type is never read there.
+        # Confirmed by test: a vote sequence lower than an already-accepted
+        # signal's sequence from the same transport is rejected as out-of-order
+        # (tests/test_evidence_transport.py::test_shared_sequence_space_spans_signal_and_vote_submission).
         self.sequence = SequenceAllocator()
         self.replay_protector = ReplayProtector(
             max_age_seconds=max_age_seconds, future_skew_seconds=future_skew_seconds
