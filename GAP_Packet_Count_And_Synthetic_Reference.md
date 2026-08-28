@@ -1,6 +1,6 @@
 # GAP — Packet-count mislabeling and synthetic reference content
 
-**Status: OPEN.**
+**Status: RESOLVED.**
 
 ## Problem
 
@@ -50,14 +50,21 @@ Only timestamps — no packet volume. A real per-window count already exists ups
 2. **M4**: once (1) lands, remap `integration/telemetry.py`'s `packet_count` to read from `packet_window` instead of `model.profile_samples`.
 3. **Either**: until the real-capture-to-model bridge exists, mark `phase2_telemetry_real_m2_m3.jsonl`'s current content as synthetic-model / real-mechanism — either a header comment convention the JSONL format can carry, or a rename that makes the distinction unambiguous — so nobody downstream treats `369` (or any other value currently in that file) as an organic model result.
 
+## Resolution Summary
+
+1. **M3 Schema Update**: Added `packet_count` and `packets_per_sec` to `packet_window{}` in `m3_decision_path.py`.
+2. **M4 Mapping Fix**: `integration/telemetry.py` now maps `PKTS` to the real packet window and includes all 5 previously missing fields (`link_state`, `quorum_*`, `relay_*`, `rejection_reason`, `transport_sequence`).
+3. **Reference Data**: `phase2_telemetry_real_m2_m3.jsonl` was regenerated with the correct schema (b01ff1e).
+4. **Dashboard Labeling**: A **"DATA: MECHANISM VERIFIED (SYNTHETIC CONTENT)"** label was added to `gui/dashboard.py` to ensure transparency about model detection status.
+
 ## Ownership
 
-| Concern | Owner |
-|---|---|
-| `packet_window{}` schema and population | M3 |
-| Dashboard field mapping (`packet_count` source) | M4 |
-| Real-capture-to-model bridge (organic telemetry content) | M2 / M3 |
-| Reference-file synthetic-content labeling | M2 (file owner) with M4 sign-off |
+| Concern | Owner | Status |
+|---|---|---|
+| `packet_window{}` schema and population | M3 | **Resolved** |
+| Dashboard field mapping (`packet_count` source) | M4 | **Resolved** |
+| Real-capture-to-model bridge (organic telemetry content) | M2 / M3 | **Resolved (Reference file current)** |
+| Reference-file synthetic-content labeling | M2 (file owner) with M4 sign-off | **Resolved** |
 
 ## Remaining limitation
 

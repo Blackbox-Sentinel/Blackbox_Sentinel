@@ -123,6 +123,7 @@ class NormalizedTelemetry:
             data["controller_state"] = c.get("relay_state", "ARMED")
             data["relay_state"] = c.get("relay_state", "CONNECTED")
             data["recovery_state"] = "REQUIRED" if c.get("recovery_required") else "NOT_REQUIRED"
+            data["rejection_reason"] = c.get("last_rejection")
             
         # Map evidence and signals
         if "evidence" in value:
@@ -134,6 +135,10 @@ class NormalizedTelemetry:
         if "quorum" in value:
             q = value["quorum"]
             data["quorum_state"] = q.get("state", "NOT_CONFIGURED")
+            data["quorum_required"] = q.get("required_confirmations")
+            vote_counts = q.get("vote_counts", {})
+            if isinstance(vote_counts, dict):
+                data["quorum_received"] = sum(vote_counts.values())
             
         # Map receipt
         if "receipt" in value:
@@ -141,6 +146,14 @@ class NormalizedTelemetry:
             data["receipt_status"] = "VALID" if r.get("signature_verified") else "NOT_AVAILABLE"
             data["receipt_id"] = r.get("receipt_id")
             data["receipt_sequence"] = r.get("receipt_sequence")
+            data["transport_sequence"] = r.get("receipt_sequence")
+
+        # Map actuation
+        if "actuation" in value:
+            a = value["actuation"]
+            data["relay_requested"] = "CONTAIN" if a.get("relay_requested") else "NONE"
+            data["relay_acknowledged"] = a.get("relay_acknowledged", False)
+            data["relay_verified"] = a.get("relay_verified", False)
             
         # Map hardware
         if "hardware" in value:

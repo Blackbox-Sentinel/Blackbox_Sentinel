@@ -226,7 +226,7 @@ def main() -> None:
         "--telemetry-file",
         type=Path,
         default=None,
-        help="JSONL file emitted by integration/phase2_vertical_slice.py",
+        help="JSONL file emitted by the Phase 2 pipeline (e.g., m3-ml-ledger/data/phase2_telemetry_real_m2_m3.jsonl)",
     )
     args = parser.parse_args()
     start_gui(args.telemetry_file)
