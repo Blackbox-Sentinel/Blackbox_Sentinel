@@ -36,6 +36,7 @@ sys.path.insert(0, os.path.join(ROOT, "common"))
 from hal import get_hal
 from ledger import HashChainLedger
 from predict_v3 import AnomalyScorer, DeviceState
+from evidence_transport import M2EvidenceTransport
 from m3_decision_path import M3DecisionPath
 
 
@@ -43,7 +44,10 @@ from m3_decision_path import M3DecisionPath
 LEDGER_PATH = os.path.join(ROOT, "m3-ml-ledger", "data", "sentinel_ledger.json")
 COUNTER_PATH = os.path.join(ROOT, "m3-ml-ledger", "data", "receipt_counter.txt")
 SCORE_LOG_PATH = os.path.join(ROOT, "m3-ml-ledger", "data", "scores.jsonl")
-KEYS_DIR = os.getenv("SENTINEL_KEYS_DIR", "/run/sentinel/keys")
+KEYS_DIR = os.getenv(
+    "SENTINEL_KEYS_DIR", os.path.join(ROOT, "m3-ml-ledger", "data", "keys")
+)
+
 CAPTURE_INTERFACE = os.getenv("SENTINEL_INTERFACE", "br0")
 EMERGENCY_SMS = os.getenv("SENTINEL_SMS_TARGET", "+919876543210")
 NODE_ID = os.getenv("SENTINEL_NODE_ID", "AEDN-NODE-01")
@@ -80,13 +84,22 @@ class SentinelPipeline:
             organization_id=os.getenv("SENTINEL_ORGANIZATION_ID", "default_organization")
         )
         self.ledger = HashChainLedger(LEDGER_PATH)
+        self.key_epoch = int(os.getenv("SENTINEL_KEY_EPOCH", "1"))
+        self.m2_transport = M2EvidenceTransport(
+            sender_id=NODE_ID,
+            key_epoch=self.key_epoch,
+            keys_dir=KEYS_DIR,
+            max_age_seconds=30.0,
+            future_skew_seconds=5.0,
+        )
         self.decision_path = M3DecisionPath(
             ledger=self.ledger,
             node_id=NODE_ID,
             organization_id=self.scorer.organization_id,
             counter_path=COUNTER_PATH,
             controller_id=os.getenv("SENTINEL_CONTROLLER_ID", "sim-controller"),
-            key_epoch=int(os.getenv("SENTINEL_KEY_EPOCH", "1")),
+            key_epoch=self.key_epoch,
+            keys_dir=KEYS_DIR,
         )
         self.latest_telemetry = {}
 
@@ -241,11 +254,30 @@ class SentinelPipeline:
         # Every post-calibration result is available to M4 through the same
         # normalized telemetry contract. A benign result creates no containment
         # request; an anomalous result is still only evidence at this point.
-        decision = self.decision_path.submit(
-            model_result=result,
-            incident_id=f"{NODE_ID}:window-{self.window_count}",
-            now=time.time(),
+        incident_id = f"{NODE_ID}:window-{self.window_count}"
+        now = time.time()
+        model_envelope = self.m2_transport.build_signal_envelope(
+            signal_id=f"{incident_id}:model",
+            source_id=NODE_ID,
+            signal_type="m3_model_result",
+            decision="CONFIRM" if result.get("is_anomaly", False) else "DENY",
+            confidence=float(result.get("probability_attack", result.get("score", 0.0))),
+            details={
+                "score": result.get("score"),
+                "global_prediction": result.get("global_prediction"),
+                "local_prediction": result.get("local_prediction"),
+                "feature_count": result.get("feature_count", 45),
+            },
+            timestamp=now,
         )
+        decision = self.decision_path.submit_authenticated(
+            model_result=result,
+            evidence_envelopes=[(model_envelope, None)],
+            quorum_envelopes=(),
+            incident_id=incident_id,
+            now=now,
+        )
+
         self.latest_telemetry = decision.telemetry
         if result.get("is_anomaly", False) or decision.status != "BENIGN":
             self.ledger.add_entry(
@@ -318,15 +350,38 @@ class SentinelPipeline:
         """Return the latest normalized M3 event for an M4 adapter."""
         return dict(self.latest_telemetry)
 
-    def submit_security_evidence(self, *, model_result: dict, signals, incident_id: str, quorum_votes=(), now=None) -> dict:
-        """Allow M2/M3 adapters to submit independent evidence through one path."""
-        decision = self.decision_path.submit(
-            model_result=model_result,
-            signals=signals,
-            incident_id=incident_id,
-            quorum_votes=quorum_votes,
-            now=now,
-        )
+    def submit_security_evidence(
+        self,
+        *,
+        model_result: dict,
+        incident_id: str,
+        evidence_envelopes=(),
+        quorum_envelopes=(),
+        signals=None,
+        quorum_votes=(),
+        now=None,
+    ) -> dict:
+        """Submit M2 evidence through authenticated or legacy compatibility paths.
+
+        New callers should pass authenticated M2 envelopes. The decoded-object
+        arguments remain only for compatibility with existing host-side adapters.
+        """
+        if evidence_envelopes or quorum_envelopes:
+            decision = self.decision_path.submit_authenticated(
+                model_result=model_result,
+                evidence_envelopes=evidence_envelopes,
+                quorum_envelopes=quorum_envelopes,
+                incident_id=incident_id,
+                now=now,
+            )
+        else:
+            decision = self.decision_path.submit(
+                model_result=model_result,
+                signals=signals,
+                incident_id=incident_id,
+                quorum_votes=quorum_votes,
+                now=now,
+            )
         self.latest_telemetry = decision.telemetry
         return decision.to_dict()
 
