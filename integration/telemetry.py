@@ -159,6 +159,7 @@ class NormalizedTelemetry:
         if "hardware" in value:
             h = value["hardware"]
             data["tamper_state"] = h.get("tamper_state", "SECURE")
+            data["link_state"] = h.get("link_state", "UNKNOWN")
             data["power_state"] = h.get("primary_power_state", "PRIMARY")
             data["key_state"] = "VALID" if h.get("key_state") != "INVALIDATED" else "INVALIDATED"
             

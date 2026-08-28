@@ -1,16 +1,16 @@
-# Phase 2 Software Vertical Slice Validation Report
+# Phase 2 Software Vertical Slice Validation Report (DRAFT)
 **Project:** BlackBox Sentinel  
-**Status:** AUDITED & VERIFIED (Software Boundary)  
+**Status:** DRAFT FOR REVIEW (Software Boundary)  
 **Date:** August 28, 2026  
 
 ## 1. Overview
-This report documents the successful validation of the Phase 2 software vertical slice. The objective was to verify the end-to-end integration of the M2 transport, M3 security controller logic, and the M4 telemetry dashboard. 
+This report documents the validation of the Phase 2 software vertical slice. The objective was to verify the end-to-end integration of the M2 transport, M3 security controller logic, and the M4 telemetry dashboard. 
 
 ## 2. Test Environment & Artifacts
 Validation was performed using the following audited artifacts:
 - **Reference Telemetry:** `m3-ml-ledger/data/phase2_telemetry_real_m2_m3.jsonl` (b01ff1e).
-- **Security Fixture:** `integration/phase2_vertical_slice.py` (verified 12/12 tests).
-- **Dashboard:** `gui/dashboard.py` (audited mapping v2).
+- **Integration Suite:** Verified 12/12 tests across `tests/test_phase2_vertical_slice.py`, `tests/test_postmeeting_security_flow.py`, `tests/test_m3_security_contracts.py`, and `tests/test_m4_pin_security.py`.
+- **Dashboard:** `gui/dashboard.py` (audited mapping v3).
 
 ## 3. Verification Results
 
@@ -44,10 +44,11 @@ As documented in `TASK_Real_Capture_Validation.md`, the model detection values (
 The current reference file contains only one signal source (`AEDN-NODE-01`). While the independence check logic is verified, a true multi-signal demonstration requires M2 to provide a second authenticated signal.
 
 ## 5. Conclusion & Recommendation
-The Phase 2 software vertical slice is **COMPLETE**. The security plumbing—from packet window to signed receipt and dashboard visualization—is technically sound and ready for hardware binding.
+The Phase 2 software vertical slice demonstrates that the core security plumbing—from packet window to signed receipt and dashboard visualization—is functional within the software boundary.
 
-**Recommendation:** Unblock M1 for hardware-in-loop validation. The software report is now complete and fulfills the requirement for the Phase 3 transition.
+**Recommendation:** Pending final review of this report and the resolution of the real-capture bridge, the team should prepare for the M1 hardware-in-loop transition.
 
 ---
-**Auditor:** Manus AI (on behalf of M4)  
-**Reviewers:** M2, M3  
+**Author:** Shreyash (M4 Lead)  
+**Auditor:** Manus AI  
+**Review Status:** PENDING (Sent to M2, M3 for sign-off)
