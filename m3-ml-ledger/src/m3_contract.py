@@ -19,7 +19,9 @@ MESSAGE_TYPES = frozenset(
     {
         "ML_EVIDENCE",
         "PEER_EVIDENCE",
+        "EVIDENCE_SIGNAL",
         "QUORUM_VOTE",
+
         "CONTAINMENT_RECEIPT",
         "CONTROLLER_ACK",
         "RECOVERY_STATE",

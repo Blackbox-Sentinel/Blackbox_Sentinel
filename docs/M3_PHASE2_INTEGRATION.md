@@ -117,6 +117,8 @@ first_vote = m2_transport.submit_vote(...)
 second_vote = m2_peer_transport.submit_vote(...)
 ```
 
-The two transport instances use the same HMAC-SHA256 envelope contract and maintain one sequence space per sender/key epoch across signal and vote messages. The returned `EvidenceSignal` and `QuorumVote` objects are then consumed by the M3 two-signal gate, quorum state machine, Ed25519 receipt service, simulated controller, ledger, and normalized M4 telemetry writer.
+The two transport instances use the HMAC-SHA256 envelope contract with distinct per-node master keys under the gitignored `m3-ml-ledger/data/keys/<sender_id>.key` directory. Each derives its epoch key from `key_epoch` and maintains one sequence space per sender/key epoch across signal and vote messages. The returned `EvidenceSignal` and `QuorumVote` objects are then consumed by the M3 two-signal gate, quorum state machine, Ed25519 receipt service, simulated controller, ledger, and normalized M4 telemetry writer.
+
+The M3 verifier resolves the claimed sender’s provisioned master key and derives the envelope epoch key when `keys_dir` is configured; it does not trust a caller-supplied key. It accepts M2’s canonical `EVIDENCE_SIGNAL` message type. The live pipeline constructs the M2 transport and routes model evidence through `submit_authenticated`; external M2 evidence and quorum envelopes can be supplied through `submit_security_evidence` for the complete second-signal path.
 
 `m3-ml-ledger/data/phase2_telemetry_real_m2_m3.jsonl` is a generated software-integration artifact from this path. It is real API-level M2/M3 integration output, but it remains simulation-only at the hardware boundary.

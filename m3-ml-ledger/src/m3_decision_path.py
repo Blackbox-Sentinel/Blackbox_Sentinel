@@ -10,7 +10,9 @@ acceptance. The controller in this module is explicitly a software simulation.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import time
+
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,9 +39,35 @@ from trusted_controller_sim import ControllerStatus, SimTrustedController
 
 
 NOT_CONFIGURED = QUORUM_NOT_CONFIGURED
+DEFAULT_KEYS_DIR = Path(__file__).resolve().parents[1] / "data" / "keys"
+
+
+def _load_node_master_key(sender_id: str, keys_dir: Path) -> bytes:
+    """Load a provisioned sender key; never create keys during verification."""
+    if not sender_id or Path(sender_id).name != sender_id:
+        raise ValueError("invalid sender_id for key lookup")
+    key_path = keys_dir / f"{sender_id}.key"
+    try:
+        master_key = key_path.read_bytes()
+    except FileNotFoundError as exc:
+        raise ValueError(f"no provisioned key for sender: {sender_id}") from exc
+    if len(master_key) != 32:
+        raise ValueError("provisioned node key must be exactly 32 bytes")
+    return master_key
+
+
+def _derive_node_epoch_key(master_key: bytes, key_epoch: int) -> bytes:
+    if not isinstance(key_epoch, int) or isinstance(key_epoch, bool) or key_epoch < 0:
+        raise ValueError("key_epoch must be a non-negative integer")
+    return hmac.new(
+        master_key,
+        str(key_epoch).encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
 
 
 @dataclass(frozen=True)
+
 class DecisionPathResult:
     """Machine-readable result returned to M4 and integration tests."""
 
@@ -80,7 +108,9 @@ class M3DecisionPath:
         quorum_deadline_seconds: float = 30.0,
         signer: Ed25519ReceiptSigner | None = None,
         replay_protector: ReplayProtector | None = None,
+        keys_dir: str | Path | None = None,
     ) -> None:
+
         if not node_id.strip():
             raise ValueError("node_id must not be empty")
         if not organization_id.strip():
@@ -115,37 +145,53 @@ class M3DecisionPath:
             controller_id=controller_id,
         )
         self.replay_protector = replay_protector or ReplayProtector()
+        self.keys_dir = Path(keys_dir) if keys_dir is not None else None
         self._incident_sequence = 0
 
+    def _verification_key(self, envelope: AuthenticatedEnvelope, supplied_key: bytes | None) -> bytes:
+        """Resolve a sender/epoch key without trusting a caller-supplied key."""
+        if self.keys_dir is None:
+            if supplied_key is None:
+                raise ValueError("verification key is required when keys_dir is unset")
+            return supplied_key
+        master_key = _load_node_master_key(envelope.sender_id, self.keys_dir)
+        return _derive_node_epoch_key(master_key, envelope.key_epoch)
+
     @property
+
     def quorum_configured(self) -> bool:
         return self.required_confirmations is not None
 
     def accept_authenticated_envelope(
         self,
         envelope: AuthenticatedEnvelope,
-        key: bytes,
+        key: bytes | None = None,
         *,
         now: float | None = None,
     ) -> bool:
+
         """Verify one M2 envelope at the M3 boundary.
 
         M2 may perform this check at the transport boundary as well. Keeping the
         method here lets the software vertical slice verify the same contract
         before M3 consumes an evidence or vote payload.
         """
-        return self.replay_protector.accept(envelope, key, now=now)
+        return self.replay_protector.accept(
+            envelope, self._verification_key(envelope, key), now=now
+        )
 
     def evidence_signal_from_envelope(
         self,
         envelope: AuthenticatedEnvelope,
-        key: bytes,
+        key: bytes | None = None,
         *,
         now: float | None = None,
     ) -> EvidenceSignal:
+
         """Verify and decode one authenticated evidence envelope from M2."""
-        if envelope.message_type not in {"ML_EVIDENCE", "PEER_EVIDENCE"}:
+        if envelope.message_type not in {"ML_EVIDENCE", "PEER_EVIDENCE", "EVIDENCE_SIGNAL"}:
             raise ValueError("envelope is not an evidence message")
+
         if envelope.message_type not in MESSAGE_TYPES:
             raise ValueError("unsupported message type")
         if not self.accept_authenticated_envelope(envelope, key, now=now):
@@ -179,10 +225,11 @@ class M3DecisionPath:
     def quorum_vote_from_envelope(
         self,
         envelope: AuthenticatedEnvelope,
-        key: bytes,
+        key: bytes | None = None,
         *,
         now: float | None = None,
     ) -> QuorumVote:
+
         """Verify and decode one authenticated quorum vote from M2."""
         if envelope.message_type != "QUORUM_VOTE":
             raise ValueError("envelope is not a quorum-vote message")

@@ -45,7 +45,7 @@ from integration.telemetry import (  # noqa: E402
 )
 
 
-TRANSPORT_KEY = b"phase2-transport-key-012345678901"
+TELEMETRY_TRANSPORT_KEY = b"phase2-telemetry-transport-key-0123456789"
 
 
 class M2SimTransport:
@@ -64,11 +64,13 @@ class M2SimTransport:
             message_type=telemetry.event_type,
             sequence=self.sequence.next(),
             payload=telemetry.to_dict(),
-            key=TRANSPORT_KEY,
+            key=TELEMETRY_TRANSPORT_KEY,
             key_id="phase2-sim-transport",
+
             key_epoch=1,
         )
-        accepted = self.replay_protector.accept(envelope, TRANSPORT_KEY)
+        accepted = self.replay_protector.accept(envelope, TELEMETRY_TRANSPORT_KEY)
+
         payload = dict(envelope.payload)
         payload.update(
             {
@@ -92,23 +94,25 @@ class Phase2VerticalSlice:
         self.output_path = Path(output_path)
         self.sleep_seconds = max(0.0, sleep_seconds)
         self.writer = JsonlTelemetryWriter(self.output_path)
+        self.keys_dir = self.output_path.parent / "keys"
         self.transport = M2SimTransport(self.writer)
+
         self.m2_transport = M2EvidenceTransport(
             sender_id="node-a",
-            key=TRANSPORT_KEY,
-            key_id="phase2-transport-key",
             key_epoch=1,
+            keys_dir=self.keys_dir,
             max_age_seconds=60.0,
             future_skew_seconds=5.0,
         )
+
         self.m2_peer_transport = M2EvidenceTransport(
             sender_id="node-b",
-            key=TRANSPORT_KEY,
-            key_id="phase2-transport-key",
             key_epoch=1,
+            keys_dir=self.keys_dir,
             max_age_seconds=60.0,
             future_skew_seconds=5.0,
         )
+
         self.packet_count = 0
 
         self.alert_count = 0

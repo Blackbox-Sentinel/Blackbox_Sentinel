@@ -6,7 +6,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "m3-ml-ledger" / "src"))
+sys.path.insert(0, str(ROOT / "m2-systems" / "src"))
 
+from evidence_transport import M2EvidenceTransport
 from authenticated_envelope import AuthenticatedEnvelope, ReplayProtector, SequenceAllocator
 from ledger import HashChainLedger
 from m3_decision_path import M3DecisionPath
@@ -263,3 +265,109 @@ def test_authenticated_envelopes_feed_m3_evidence_and_quorum(tmp_path):
     assert result.status == "CONTAINMENT_ACCEPTED"
     assert result.telemetry["quorum"]["state"] == QuorumState.APPROVED.value
     assert result.telemetry["receipt"]["signature_verified"] is True
+
+
+def test_m3_resolves_per_node_epoch_key_without_trusting_supplied_key(tmp_path):
+    keys_dir = tmp_path / "keys"
+    sender = M2EvidenceTransport(
+        sender_id="node-a",
+        key_epoch=3,
+        keys_dir=keys_dir,
+    )
+    envelope = sender.build_signal_envelope(
+        signal_id="m2-node-a-epoch-3",
+        source_id="untrusted-payload-source",
+        signal_type="known_attack",
+        decision="CONFIRM",
+        confidence=0.95,
+        details={"source": "m2"},
+        timestamp=100.0,
+    )
+    path = M3DecisionPath(
+        ledger=HashChainLedger(str(tmp_path / "ledger.json")),
+        node_id="node-a",
+        organization_id="company_one",
+        counter_path=tmp_path / "counter.txt",
+        keys_dir=keys_dir,
+        replay_protector=ReplayProtector(max_age_seconds=30, future_skew_seconds=5),
+    )
+
+    signal = path.evidence_signal_from_envelope(
+        envelope,
+        b"wrong-caller-supplied-key-0123456789",
+        now=100.0,
+    )
+
+    assert signal.signal_id == "m2-node-a-epoch-3"
+    assert signal.source_id == "node-a"
+    assert signal.authenticated is True
+    assert signal.fresh is True
+
+
+def test_m3_rejects_cross_node_key_and_replayed_envelope(tmp_path):
+    keys_dir = tmp_path / "keys"
+    node_a = M2EvidenceTransport(sender_id="node-a", key_epoch=1, keys_dir=keys_dir)
+    node_b = M2EvidenceTransport(sender_id="node-b", key_epoch=1, keys_dir=keys_dir)
+    envelope = node_a.build_signal_envelope(
+        signal_id="m2-node-a-1",
+        source_id="node-a",
+        signal_type="known_attack",
+        decision="CONFIRM",
+        timestamp=100.0,
+    )
+    path = M3DecisionPath(
+        ledger=HashChainLedger(str(tmp_path / "ledger.json")),
+        node_id="node-a",
+        organization_id="company_one",
+        counter_path=tmp_path / "counter.txt",
+        keys_dir=keys_dir,
+        replay_protector=ReplayProtector(max_age_seconds=30, future_skew_seconds=5),
+    )
+
+    signal = path.evidence_signal_from_envelope(envelope, now=100.0)
+    assert signal.authenticated is True
+    with pytest.raises(ValueError, match="rejected"):
+        path.evidence_signal_from_envelope(envelope, now=100.0)
+
+    forged = AuthenticatedEnvelope.create(
+        sender_id="node-b",
+        recipient=envelope.recipient,
+        message_type=envelope.message_type,
+        sequence=1,
+        payload=dict(envelope.payload),
+        key=node_a.key,
+        key_id="node-b-epoch-1",
+        key_epoch=1,
+        timestamp=100.0,
+    )
+    with pytest.raises(ValueError, match="rejected"):
+        path.evidence_signal_from_envelope(forged, now=100.0)
+
+
+def test_m3_accepts_m2_evidence_signal_message_type(tmp_path):
+    ledger = HashChainLedger(str(tmp_path / "ledger.json"))
+    path = M3DecisionPath(
+        ledger=ledger,
+        node_id="node-a",
+        organization_id="company_one",
+        counter_path=tmp_path / "counter.txt",
+    )
+    envelope = _envelope(
+        "node-a",
+        "EVIDENCE_SIGNAL",
+        1,
+        {
+            "signal_id": "m2-signal-1",
+            "signal_type": "known_attack",
+            "decision": "CONFIRM",
+            "confidence": 0.95,
+            "details": {"source": "m2-transport"},
+        },
+    )
+
+    signal = path.evidence_signal_from_envelope(envelope, KEY, now=100.0)
+
+    assert signal.signal_id == "m2-signal-1"
+    assert signal.source_id == "node-a"
+    assert signal.authenticated is True
+    assert signal.fresh is True
