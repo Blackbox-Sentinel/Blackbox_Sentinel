@@ -23,6 +23,7 @@ class NormalizedTelemetry:
     organization_id: str
     node_id: str
     incident_id: str
+    packet_window: dict[str, Any] = field(default_factory=dict)
     model: dict[str, Any] = field(default_factory=dict)
     evidence: dict[str, Any] = field(default_factory=dict)
     quorum: dict[str, Any] = field(default_factory=dict)
@@ -50,6 +51,7 @@ class NormalizedTelemetry:
             "organization_id",
             "node_id",
             "incident_id",
+            "packet_window",
             "model",
             "evidence",
             "quorum",
@@ -69,6 +71,7 @@ class NormalizedTelemetry:
             organization_id=str(value["organization_id"]),
             node_id=str(value["node_id"]),
             incident_id=str(value["incident_id"]),
+            packet_window=dict(value.get("packet_window", {})),
             model=dict(value.get("model", {})),
             evidence=dict(value.get("evidence", {})),
             quorum=dict(value.get("quorum", {})),

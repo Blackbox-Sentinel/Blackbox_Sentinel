@@ -44,9 +44,32 @@ from m3_decision_path import M3DecisionPath
 LEDGER_PATH = os.path.join(ROOT, "m3-ml-ledger", "data", "sentinel_ledger.json")
 COUNTER_PATH = os.path.join(ROOT, "m3-ml-ledger", "data", "receipt_counter.txt")
 SCORE_LOG_PATH = os.path.join(ROOT, "m3-ml-ledger", "data", "scores.jsonl")
+TELEMETRY_PATH = os.path.join(ROOT, "m3-ml-ledger", "data", "phase2_telemetry_real_m2_m3.jsonl")
 KEYS_DIR = os.getenv(
     "SENTINEL_KEYS_DIR", os.path.join(ROOT, "m3-ml-ledger", "data", "keys")
 )
+
+
+class TelemetryJsonlWriter:
+    """Append normalized telemetry dicts as JSON Lines.
+
+    Mirrors integration/telemetry.py's JsonlTelemetryWriter (truncate on
+    construction, append-and-flush per emit) -- adapted for a plain dict
+    since M3DecisionPath._telemetry() already returns
+    NormalizedTelemetry.to_dict(), not a NormalizedTelemetry instance.
+    """
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("")
+
+    def emit(self, telemetry: dict) -> None:
+        with open(self.path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(telemetry, sort_keys=True, ensure_ascii=True) + "\n")
+            f.flush()
+
 
 CAPTURE_INTERFACE = os.getenv("SENTINEL_INTERFACE", "br0")
 EMERGENCY_SMS = os.getenv("SENTINEL_SMS_TARGET", "+919876543210")
@@ -101,6 +124,7 @@ class SentinelPipeline:
             key_epoch=self.key_epoch,
             keys_dir=KEYS_DIR,
         )
+        self.telemetry_writer = TelemetryJsonlWriter(TELEMETRY_PATH)
         self.latest_telemetry = {}
 
         # State
@@ -166,11 +190,14 @@ class SentinelPipeline:
             f"{CAPTURE_INTERFACE}..."
         )
         while self.running:
+            capture_started_at = time.time()
             feature_row = capture_live_window(
                 timeout=1.0,
                 iface=CAPTURE_INTERFACE,
                 history_state=self.scorer.history_state,
             )
+            feature_row["capture_started_at"] = capture_started_at
+            feature_row["capture_ended_at"] = time.time()
             self.packet_count += int(round(feature_row.get("packets_per_sec", 0.0)))
             result = self.scorer.ingest_feature_window(feature_row)
             self._handle_result(result, feature_row)
@@ -188,6 +215,7 @@ class SentinelPipeline:
         print("[DEMO] Streaming simulated enterprise traffic through v3 windows...\n")
 
         while self.running:
+            capture_started_at = _time.time()
             packets = []
             labels = []
             for _ in range(25):
@@ -223,6 +251,8 @@ class SentinelPipeline:
             feature_row = window_features(packets, _time.time(), 1.0)
             feature_row = self.scorer.history_state.enrich(feature_row)
             feature_row["synthetic_label"] = labels[-1]
+            feature_row["capture_started_at"] = capture_started_at
+            feature_row["capture_ended_at"] = _time.time()
             self.packet_count += len(packets)
             result = self.scorer.ingest_feature_window(feature_row)
             self._handle_result(result, feature_row)
@@ -276,9 +306,11 @@ class SentinelPipeline:
             quorum_envelopes=(),
             incident_id=incident_id,
             now=now,
+            features=features,
         )
 
         self.latest_telemetry = decision.telemetry
+        self.telemetry_writer.emit(decision.telemetry)
         if result.get("is_anomaly", False) or decision.status != "BENIGN":
             self.ledger.add_entry(
                 "m3_policy_decision",

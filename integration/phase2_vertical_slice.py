@@ -367,7 +367,7 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=ROOT / "m3-ml-ledger" / "data" / "phase2_telemetry.jsonl",
+        default=ROOT / "m3-ml-ledger" / "data" / "phase2_telemetry_security_fixture.jsonl",
         help="JSONL telemetry output consumed by the M4 dashboard",
     )
     parser.add_argument("--sleep", type=float, default=0.0, help="Delay between demo events in seconds")

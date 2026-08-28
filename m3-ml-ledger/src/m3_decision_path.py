@@ -259,6 +259,7 @@ class M3DecisionPath:
         incident_id: str,
         quorum_envelopes: Sequence[tuple[AuthenticatedEnvelope, bytes]] = (),
         now: float | None = None,
+        features: Mapping[str, Any] | None = None,
     ) -> DecisionPathResult:
         """Decode M2 envelopes and submit one complete M3 policy decision."""
         signals = [
@@ -275,6 +276,7 @@ class M3DecisionPath:
             incident_id=incident_id,
             quorum_votes=votes,
             now=now,
+            features=features,
         )
 
     def submit(
@@ -286,6 +288,7 @@ class M3DecisionPath:
         quorum_votes: Sequence[QuorumVote] | None = None,
         now: float | None = None,
         key_epoch: int | None = None,
+        features: Mapping[str, Any] | None = None,
     ) -> DecisionPathResult:
         """Evaluate a scored window and return normalized M4 telemetry.
 
@@ -399,6 +402,7 @@ class M3DecisionPath:
             status=status,
             now=current_time,
             controller_accepted=controller_accepted,
+            features=features,
         )
         return DecisionPathResult(
             status=status,
@@ -480,6 +484,7 @@ class M3DecisionPath:
         status: str,
         now: float,
         controller_accepted: bool,
+        features: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         signal_types = {signal.signal_type for signal in signal_list}
         source_ids = {signal.source_id for signal in signal_list}
@@ -490,6 +495,15 @@ class M3DecisionPath:
             organization_id=self.organization_id,
             node_id=self.node_id,
             incident_id=incident_id,
+            packet_window=(
+                {
+                    "window_id": incident_id,
+                    "window_start_time": features.get("window_start_epoch"),
+                    "window_end_time": features.get("capture_ended_at"),
+                }
+                if features is not None
+                else {}
+            ),
             model={
                 key: model_result.get(key)
                 for key in (
