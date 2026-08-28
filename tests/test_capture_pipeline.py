@@ -80,11 +80,17 @@ def test_rolling_feature_state_no_lookahead_and_bounded_history():
 def test_model_feature_columns_matches_actual_pipeline_output():
     """model_feature_columns() must exactly match the keys produced by
     running real packets through window_features() + RollingFeatureState,
-    excluding only the two metadata fields (timestamp, window_start_epoch).
+    excluding only the metadata/display fields (timestamp, window_start_epoch,
+    packet_count) that ride in feature_row but are never selected into the
+    model's input vector by AnomalyScorer.ingest_feature_window().
 
-    This encodes, as a permanent regression test, the bug found in this
+    This encodes, as a permanent regression test, two bugs found in this
     session: window_features() always adds window_start_epoch, which
-    model_feature_columns() does not account for.
+    model_feature_columns() does not account for; and, separately,
+    window_features() also adds packet_count as dashboard/display metadata
+    (the raw per-window packet count, distinct from the packets_per_sec rate
+    that is an actual model feature), which model_feature_columns() likewise
+    does not account for.
     """
     packets = [
         IP(src="10.0.0.1", dst="10.0.0.100") / TCP(flags="S"),
@@ -95,7 +101,7 @@ def test_model_feature_columns_matches_actual_pipeline_output():
     state = RollingFeatureState(history_windows=5)
     enriched_row = state.enrich(raw_row)
 
-    actual_keys = set(enriched_row.keys()) - {"timestamp", "window_start_epoch"}
+    actual_keys = set(enriched_row.keys()) - {"timestamp", "window_start_epoch", "packet_count"}
     expected_keys = set(model_feature_columns(history_windows=5))
 
     assert actual_keys == expected_keys
