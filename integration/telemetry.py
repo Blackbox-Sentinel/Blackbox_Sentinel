@@ -90,8 +90,81 @@ class NormalizedTelemetry:
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "NormalizedTelemetry":
         """Parse a producer mapping while ignoring future unknown fields."""
+        # Handle the real M2-M3 schema mapping to NormalizedTelemetry
+        # The real schema uses nested objects like 'model', 'controller', 'evidence', etc.
+        
+        # 1. Start with the raw mapping if it already matches (backwards compatibility)
         fields = cls.__dataclass_fields__
         data = {key: value[key] for key in fields if key in value}
+        
+        # 2. Map real M2-M3 nested fields to normalized flat fields
+        if "incident_id" in value and "event_id" not in data:
+            data["event_id"] = value["incident_id"]
+        if "event_type" in value and "event_type" not in data:
+            data["event_type"] = value["event_type"]
+            
+        # Map model results
+        if "model" in value:
+            m = value["model"]
+            data["packet_count"] = m.get("profile_samples", 0)
+            data["alert_count"] = 1 if m.get("is_anomaly") else 0
+            data["model_profile"] = m.get("state", "unknown")
+            data["decision"] = "CONTAIN" if m.get("is_anomaly") else "WAITING"
+            
+        # Map controller state
+        if "controller" in value:
+            c = value["controller"]
+            data["controller_state"] = c.get("relay_state", "ARMED")
+            data["relay_state"] = c.get("relay_state", "CONNECTED")
+            data["recovery_state"] = "REQUIRED" if c.get("recovery_required") else "NOT_REQUIRED"
+            
+        # Map evidence and signals
+        if "evidence" in value:
+            e = value["evidence"]
+            data["signals"] = e.get("signals", [])
+            data["evidence_digest"] = e.get("digest")
+            
+        # Map quorum
+        if "quorum" in value:
+            q = value["quorum"]
+            data["quorum_state"] = q.get("state", "NOT_CONFIGURED")
+            
+        # Map receipt
+        if "receipt" in value:
+            r = value["receipt"]
+            data["receipt_status"] = "VALID" if r.get("signature_verified") else "NOT_AVAILABLE"
+            data["receipt_id"] = r.get("receipt_id")
+            data["receipt_sequence"] = r.get("receipt_sequence")
+            
+        # Map hardware
+        if "hardware" in value:
+            h = value["hardware"]
+            data["tamper_state"] = h.get("tamper_state", "SECURE")
+            data["power_state"] = h.get("primary_power_state", "PRIMARY")
+            data["key_state"] = "VALID" if h.get("key_state") != "INVALIDATED" else "INVALIDATED"
+            
+        # Map transport
+        if "transport_auth" not in data:
+            # Check if all signals are authenticated
+            signals = data.get("signals", [])
+            if signals:
+                data["transport_auth"] = "VERIFIED" if all(s.get("authenticated") for s in signals) else "FAILED"
+            else:
+                data["transport_auth"] = "NOT_VERIFIED"
+                
+        if "freshness_status" not in data:
+            signals = data.get("signals", [])
+            if signals:
+                data["freshness_status"] = "FRESH" if all(s.get("fresh") for s in signals) else "STALE"
+            else:
+                data["freshness_status"] = "NOT_CHECKED"
+
+        # Final cleanup for mandatory fields
+        if "event_id" not in data:
+            data["event_id"] = f"evt-{datetime.now().timestamp()}"
+        if "event_type" not in data:
+            data["event_type"] = "unknown"
+
         return cls(**data)
 
     @classmethod

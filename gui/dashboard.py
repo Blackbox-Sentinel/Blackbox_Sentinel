@@ -63,8 +63,8 @@ class Dashboard(QMainWindow):
         self.status_label.setStyleSheet("font-size: 15px; color: #24557a; font-weight: bold;")
         layout.addWidget(self.status_label, 0, 0, 1, 2)
 
-        self.telemetry_label = QLabel("PKTS: 0   ALERTS: 0")
-        self.telemetry_label.setStyleSheet("font-size: 11px; color: #1f2937; font-weight: bold;")
+        self.telemetry_label = QLabel("PKTS: 0   FEATS: 0   ALERTS: 0")
+        self.telemetry_label.setStyleSheet("font-size: 10px; color: #1f2937; font-weight: bold;")
         layout.addWidget(self.telemetry_label, 0, 2, 1, 2)
 
         self.relay_label = QLabel("RELAY: UNKNOWN")
@@ -134,7 +134,13 @@ class Dashboard(QMainWindow):
             "TAMPERED",
             "RECOVERY",
         }
-        self.telemetry_label.setText(f"PKTS: {telemetry.packet_count}   ALERTS: {telemetry.alert_count}")
+        # Display real feature count if available
+        feature_count = 0
+        if telemetry.signals:
+            details = telemetry.signals[0].get("details", {})
+            feature_count = details.get("feature_count", 0)
+            
+        self.telemetry_label.setText(f"PKTS: {telemetry.packet_count}   FEATS: {feature_count}   ALERTS: {telemetry.alert_count}")
 
         state = telemetry.controller_state
         state_color = "#008a3b" if state in {"ARMED", "SAFE"} else "#c00020" if self.is_locked else "#b36b00"
