@@ -106,10 +106,16 @@ class NormalizedTelemetry:
         # Map model results
         if "model" in value:
             m = value["model"]
-            data["packet_count"] = m.get("profile_samples", 0)
             data["alert_count"] = 1 if m.get("is_anomaly") else 0
             data["model_profile"] = m.get("state", "unknown")
             data["decision"] = "CONTAIN" if m.get("is_anomaly") else "WAITING"
+            
+        # Map packet window (real packet count)
+        if "packet_window" in value:
+            pw = value["packet_window"]
+            data["packet_count"] = pw.get("packet_count", 0)
+            if "packets_per_sec" in pw:
+                data["notes"] = f"Rate: {pw['packets_per_sec']:.2f} pkts/s"
             
         # Map controller state
         if "controller" in value:

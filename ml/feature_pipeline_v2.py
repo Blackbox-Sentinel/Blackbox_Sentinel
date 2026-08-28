@@ -135,6 +135,7 @@ def window_features(
         max_packet_size = min_packet_size = 0
 
     feature_row = {
+        "packet_count": packet_count,
         "packets_per_sec": packet_count / duration,
         "bytes_per_sec": total_bytes / duration,
         "avg_packet_size": avg_packet_size,

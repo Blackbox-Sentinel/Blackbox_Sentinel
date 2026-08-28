@@ -66,6 +66,10 @@ class Dashboard(QMainWindow):
         self.telemetry_label = QLabel("PKTS: 0   FEATS: 0   ALERTS: 0")
         self.telemetry_label.setStyleSheet("font-size: 10px; color: #1f2937; font-weight: bold;")
         layout.addWidget(self.telemetry_label, 0, 2, 1, 2)
+        
+        self.synthetic_label = QLabel("DATA: MECHANISM VERIFIED (SYNTHETIC CONTENT)")
+        self.synthetic_label.setStyleSheet("font-size: 8px; color: #b91c1c; font-weight: bold;")
+        layout.addWidget(self.synthetic_label, 8, 0, 1, 4)
 
         self.relay_label = QLabel("RELAY: UNKNOWN")
         self.tamper_label = QLabel("TAMPER: UNKNOWN")
@@ -92,7 +96,7 @@ class Dashboard(QMainWindow):
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
         self.log_box.setStyleSheet("font-size: 8px; color: #111827; background: #ffffff;")
-        layout.addWidget(self.log_box, 8, 0, 1, 4)
+        layout.addWidget(self.log_box, 9, 0, 1, 4)
 
         self.attack_btn = QPushButton("ATTACK")
         self.audit_btn = QPushButton("AUDIT")
@@ -105,10 +109,10 @@ class Dashboard(QMainWindow):
         for button in (self.attack_btn, self.audit_btn, self.pin_btn, self.refresh_btn):
             button.setMinimumHeight(34)
             button.setStyleSheet("font-size: 9px; font-weight: bold; padding: 4px;")
-        layout.addWidget(self.attack_btn, 9, 0)
-        layout.addWidget(self.audit_btn, 9, 1)
-        layout.addWidget(self.pin_btn, 9, 2)
-        layout.addWidget(self.refresh_btn, 9, 3)
+        layout.addWidget(self.attack_btn, 10, 0)
+        layout.addWidget(self.audit_btn, 10, 1)
+        layout.addWidget(self.pin_btn, 10, 2)
+        layout.addWidget(self.refresh_btn, 10, 3)
 
         container.setStyleSheet(
             "QWidget { background: #f3f5f7; } "

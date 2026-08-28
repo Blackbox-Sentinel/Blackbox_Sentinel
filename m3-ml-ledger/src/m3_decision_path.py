@@ -500,6 +500,8 @@ class M3DecisionPath:
                     "window_id": incident_id,
                     "window_start_time": features.get("window_start_epoch"),
                     "window_end_time": features.get("capture_ended_at"),
+                    "packet_count": features.get("packet_count", 0),
+                    "packets_per_sec": features.get("packets_per_sec", 0.0),
                 }
                 if features is not None
                 else {}
