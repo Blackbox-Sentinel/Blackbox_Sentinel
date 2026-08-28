@@ -190,8 +190,8 @@ class M3DecisionPath:
 
         """Verify and decode one authenticated evidence envelope from M2."""
         if envelope.message_type not in {"ML_EVIDENCE", "PEER_EVIDENCE", "EVIDENCE_SIGNAL"}:
-
             raise ValueError("envelope is not an evidence message")
+
         if envelope.message_type not in MESSAGE_TYPES:
             raise ValueError("unsupported message type")
         if not self.accept_authenticated_envelope(envelope, key, now=now):
