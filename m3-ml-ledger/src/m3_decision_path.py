@@ -144,7 +144,7 @@ class M3DecisionPath:
         now: float | None = None,
     ) -> EvidenceSignal:
         """Verify and decode one authenticated evidence envelope from M2."""
-        if envelope.message_type not in {"ML_EVIDENCE", "PEER_EVIDENCE"}:
+        if envelope.message_type not in {"ML_EVIDENCE", "PEER_EVIDENCE", "EVIDENCE_SIGNAL"}:
             raise ValueError("envelope is not an evidence message")
         if envelope.message_type not in MESSAGE_TYPES:
             raise ValueError("unsupported message type")

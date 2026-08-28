@@ -263,3 +263,32 @@ def test_authenticated_envelopes_feed_m3_evidence_and_quorum(tmp_path):
     assert result.status == "CONTAINMENT_ACCEPTED"
     assert result.telemetry["quorum"]["state"] == QuorumState.APPROVED.value
     assert result.telemetry["receipt"]["signature_verified"] is True
+
+
+def test_m3_accepts_m2_evidence_signal_message_type(tmp_path):
+    ledger = HashChainLedger(str(tmp_path / "ledger.json"))
+    path = M3DecisionPath(
+        ledger=ledger,
+        node_id="node-a",
+        organization_id="company_one",
+        counter_path=tmp_path / "counter.txt",
+    )
+    envelope = _envelope(
+        "node-a",
+        "EVIDENCE_SIGNAL",
+        1,
+        {
+            "signal_id": "m2-signal-1",
+            "signal_type": "known_attack",
+            "decision": "CONFIRM",
+            "confidence": 0.95,
+            "details": {"source": "m2-transport"},
+        },
+    )
+
+    signal = path.evidence_signal_from_envelope(envelope, KEY, now=100.0)
+
+    assert signal.signal_id == "m2-signal-1"
+    assert signal.source_id == "node-a"
+    assert signal.authenticated is True
+    assert signal.fresh is True
