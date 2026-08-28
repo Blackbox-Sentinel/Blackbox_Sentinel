@@ -7,7 +7,11 @@ sys.path.insert(0, str(ROOT / "m2-systems" / "src"))
 sys.path.insert(0, str(ROOT / "m3-ml-ledger" / "src"))
 
 from authenticated_envelope import AuthenticatedEnvelope
-from evidence_transport import M2EvidenceTransport
+from evidence_transport import (
+    M2EvidenceTransport,
+    derive_signing_key,
+    load_or_create_node_key,
+)
 from m3_security_contracts import TwoSignalGate
 from quorum_state import QuorumState, QuorumStateMachine, VoteDecision
 
@@ -232,3 +236,61 @@ def test_shared_sequence_space_spans_signal_and_vote_submission():
     )
     signal_2 = t.authenticate_signal(signal_envelope_2, now=100.0)
     assert signal_2.authenticated is True  # seq=6 > 5, accepted; 3's rejection didn't advance the counter
+
+
+# ── Per-node key provisioning (B2 resolution) ────────────────────────────
+
+def test_two_sender_ids_produce_genuinely_different_signing_keys(tmp_path):
+    master_a = load_or_create_node_key("node-a", keys_dir=tmp_path)
+    master_b = load_or_create_node_key("node-b", keys_dir=tmp_path)
+    assert master_a != master_b
+
+    signing_a = derive_signing_key(master_a, key_epoch=1)
+    signing_b = derive_signing_key(master_b, key_epoch=1)
+    assert signing_a != signing_b
+
+
+def test_same_sender_id_different_key_epoch_produces_different_derived_key():
+    master = b"x" * 32
+    key_epoch_1 = derive_signing_key(master, key_epoch=1)
+    key_epoch_2 = derive_signing_key(master, key_epoch=2)
+    assert key_epoch_1 != key_epoch_2
+
+
+def test_node_key_is_write_once_if_absent(tmp_path):
+    first = load_or_create_node_key("node-a", keys_dir=tmp_path)
+    second = load_or_create_node_key("node-a", keys_dir=tmp_path)
+    assert first == second
+    assert (tmp_path / "node-a.key").exists()
+
+
+def test_two_auto_derived_transports_cannot_verify_each_others_envelopes(tmp_path):
+    t_a = M2EvidenceTransport(sender_id="node-a", key_epoch=1, keys_dir=tmp_path)
+    t_b = M2EvidenceTransport(sender_id="node-b", key_epoch=1, keys_dir=tmp_path)
+    assert t_a.key != t_b.key
+
+    envelope = t_a.build_signal_envelope(
+        signal_id="sig-forge-1", source_id="known-detector", signal_type="known_attack",
+        decision="CONFIRM", timestamp=100.0,
+    )
+    forged = t_a.authenticate_signal(envelope, verify_key=t_b.key, now=100.0)
+    assert forged.authenticated is False
+
+
+def test_shared_sequence_space_still_holds_with_auto_derived_key(tmp_path):
+    """Re-proves the item-4 constraint under the NEW key-derivation path,
+    not just the pre-existing explicit-key path (already re-confirmed by
+    test_shared_sequence_space_spans_signal_and_vote_submission passing
+    unchanged)."""
+    t = M2EvidenceTransport(sender_id="node-c", key_epoch=1, keys_dir=tmp_path)
+    signal_envelope = t.build_signal_envelope(
+        signal_id="sig-auto-1", source_id="known-detector", signal_type="known_attack",
+        decision="CONFIRM", sequence=5, timestamp=100.0,
+    )
+    assert t.authenticate_signal(signal_envelope, now=100.0).authenticated is True
+
+    vote_envelope = t.build_vote_envelope(
+        incident_id="incident-auto-1", voter_id="node-c", decision=VoteDecision.CONFIRM,
+        evidence_digest="e" * 64, vote_sequence=1, sequence=3, timestamp=100.0,
+    )
+    assert t.authenticate_vote(vote_envelope, received_at=100.0, now=100.0).authenticated is False

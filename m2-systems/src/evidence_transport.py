@@ -26,6 +26,9 @@ them.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import secrets
 import sys
 from pathlib import Path
 from typing import Any, Mapping
@@ -40,6 +43,43 @@ from m3_security_contracts import EvidenceSignal  # noqa: E402
 from quorum_state import QuorumVote, VoteDecision  # noqa: E402
 
 
+# Per-node key provisioning (B2 resolution: per-node, not shared mesh-wide or
+# per-pair -- see B2_Crypto_Shortlist.md secs 2b/4, GAP_Shared_Quorum_Key.md).
+# Mirrors security/trusted_controller.py's load_or_create_shared_secret()
+# exactly (write-once-if-absent, 32 random bytes), keyed per sender_id
+# instead of one shared file.
+DEFAULT_KEYS_DIR = ROOT / "m3-ml-ledger" / "data" / "keys"
+
+
+def load_or_create_node_key(sender_id: str, keys_dir: Path | str | None = None) -> bytes:
+    """Load sender_id's master key, generating it once if absent.
+
+    Same mechanism as security/trusted_controller.py's
+    load_or_create_shared_secret(): write-once-if-absent, 32 random bytes,
+    read back from disk. One file per node, not one shared file.
+    """
+    base = Path(keys_dir) if keys_dir is not None else DEFAULT_KEYS_DIR
+    key_path = base / f"{sender_id}.key"
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    if not key_path.exists():
+        key_path.write_bytes(secrets.token_bytes(32))
+    return key_path.read_bytes()
+
+
+def derive_signing_key(master_key: bytes, key_epoch: int) -> bytes:
+    """signing_key = HMAC(master_key, key_epoch), per the approved B2 resolution.
+
+    One master key per node covers all future epochs; rotation is
+    incrementing key_epoch, no redistribution required. key_epoch is
+    encoded as its decimal string (readable/debuggable, unambiguous for
+    the non-negative integers key_epoch is validated to, matching this
+    codebase's general preference for string/JSON canonical encodings
+    over raw binary packing -- see authenticated_envelope.py's
+    _canonical_json).
+    """
+    return hmac.new(master_key, str(key_epoch).encode("utf-8"), hashlib.sha256).digest()
+
+
 class M2EvidenceTransport:
     """Authenticated outbound channel for one M2 node's signals and votes."""
 
@@ -47,16 +87,22 @@ class M2EvidenceTransport:
         self,
         *,
         sender_id: str,
-        key: bytes,
-        key_id: str,
+        key: bytes | None = None,
+        key_id: str | None = None,
         key_epoch: int = 1,
         max_age_seconds: float = 30.0,
         future_skew_seconds: float = 5.0,
+        keys_dir: Path | str | None = None,
     ) -> None:
         self.sender_id = sender_id
-        self.key = key
-        self.key_id = key_id
         self.key_epoch = key_epoch
+        if key is None:
+            # No explicit key: derive this node's own signing key instead of
+            # requiring a caller-supplied shared constant.
+            master_key = load_or_create_node_key(sender_id, keys_dir)
+            key = derive_signing_key(master_key, key_epoch)
+        self.key = key
+        self.key_id = key_id if key_id is not None else f"{sender_id}-epoch-{key_epoch}"
         # Shared across signals and votes deliberately: ReplayProtector.accept()'s
         # dedup key is identity = (envelope.sender_id, envelope.key_epoch) only
         # (authenticated_envelope.py:212) -- message_type is never read there.

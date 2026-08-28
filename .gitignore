@@ -36,6 +36,7 @@ m3-ml-ledger/models/device_state.json
 # Temporary keys / runtime scratch
 scratch_gui_keys/
 m3-ml-ledger/data/controller_secret.bin
+m3-ml-ledger/data/keys/
 .tempmediaStorage/
 *.tmp
 *.bak
