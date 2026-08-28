@@ -148,7 +148,7 @@ class Dashboard(QMainWindow):
 
         state = telemetry.controller_state
         state_color = "#008a3b" if state in {"ARMED", "SAFE"} else "#c00020" if self.is_locked else "#b36b00"
-        self.status_label.setText(f"CONTROLLER: {state} | EVENT: {telemetry.status.upper()}")
+        self.status_label.setText(f"CONTROLLER: {state} | EVENT: {telemetry.event_type.upper()}")
         self.status_label.setStyleSheet(f"font-size: 13px; color: {state_color}; font-weight: bold;")
 
         relay_ack = "ACK" if telemetry.relay_acknowledged else "NO ACK"
@@ -177,9 +177,9 @@ class Dashboard(QMainWindow):
         self.recovery_label.setText(f"RECOVERY: {telemetry.recovery_state}")
 
         if previous_id != telemetry.event_id:
-            note = telemetry.notes or telemetry.rejection_reason or telemetry.event_type
+            note = telemetry.notes or telemetry.rejection_reason or ""
             self._log(
-                f"{telemetry.status.upper()}: {note} "
+                f"{telemetry.event_type.upper()}: {note} "
                 f"(seq={telemetry.transport_sequence or '-'}, auth={telemetry.transport_auth})"
             )
 
