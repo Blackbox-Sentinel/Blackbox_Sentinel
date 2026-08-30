@@ -9,7 +9,7 @@ This report documents the validation of the Phase 2 software vertical slice. The
 ## 2. Test Environment & Artifacts
 Validation was performed using the following audited artifacts:
 - **Reference Telemetry:** `m3-ml-ledger/data/phase2_telemetry_real_m2_m3.jsonl` (b01ff1e).
-- **Integration Suite:** Verified 12/12 tests across `tests/test_phase2_vertical_slice.py`, `tests/test_postmeeting_security_flow.py`, `tests/test_m3_security_contracts.py`, and `tests/test_m4_pin_security.py`.
+- **Integration Suite:** Verified 12/12 tests (2+3+3+4) across `tests/test_phase2_vertical_slice.py`, `tests/test_postmeeting_security_flow.py`, `tests/test_m3_security_contracts.py`, and `tests/test_m4_pin_security.py`. A total of 48/48 full suite tests pass.
 - **Dashboard:** `gui/dashboard.py` (audited mapping v3).
 
 ## 3. Verification Results
@@ -28,11 +28,11 @@ The software-only decision boundary was tested for patent-scope compliance.
 | **Authentication** | **PASS** | `transport_auth: VERIFIED` displayed for all signals. |
 | **Freshness** | **PASS** | `freshness_status: FRESH` confirmed within 30s window. |
 | **Independence** | **PASS (Logic)** | `evidence.independent` correctly evaluates source parity. |
-| **Quorum Gate** | **PASS (Logic)** | `quorum_state: NOT_CONFIGURED` correctly blocks containment. |
+| **Quorum Gate** | **PASS (Logic)** | `quorum.state: NOT_CONFIGURED` and `controller.quorum_state: COLLECTING` correctly blocks containment. |
 | **Receipt Generation** | **PASS** | Signed Ed25519 receipts generated for approved decisions. |
 
 ### 3.3 Dashboard Display Audit
-The M4 GUI now correctly reflects the real nested M2-M3 telemetry schema. The previous "NORMAL" vs "CONTAIN" header mismatch has been resolved by mapping the header directly to the `event_type` emitted by the M3 controller.
+The M4 GUI now correctly reflects the real nested M2-M3 telemetry schema. The previous "NORMAL" vs "CONTAIN" header mismatch has been resolved by mapping the header directly to the `event_type` emitted by the M3 controller. Note: `link_state` mapping is complete on the consumer side, but the producer field is still missing and defaults to UNKNOWN.
 
 ## 4. Identified Gaps & Limitations
 
@@ -44,11 +44,9 @@ As documented in `TASK_Real_Capture_Validation.md`, the model detection values (
 The current reference file contains only one signal source (`AEDN-NODE-01`). While the independence check logic is verified, a true multi-signal demonstration requires M2 to provide a second authenticated signal.
 
 ## 5. Conclusion & Recommendation
-The Phase 2 software vertical slice demonstrates that the core security plumbing—from packet window to signed receipt and dashboard visualization—is functional within the software boundary.
-
-**Recommendation:** Pending final review of this report and the resolution of the real-capture bridge, the team should prepare for the M1 hardware-in-loop transition.
+The Phase 2 software vertical slice demonstrates that the core security plumbing—from packet window to signed receipt and dashboard visualization—is functional within the software boundary. However, M1 hardware-in-loop validation remains **BLOCKED** pending the resolution of the real-capture bridge and final M3 review.
 
 ---
 **Author:** Shreyash (M4 Lead)  
 **Auditor:** Manus AI  
-**Review Status:** PENDING (Sent to M2, M3 for sign-off)
+**Review Status:** DRAFT (Submitted for M2/M3 Review)
