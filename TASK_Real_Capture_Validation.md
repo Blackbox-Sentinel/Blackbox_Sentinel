@@ -1,6 +1,6 @@
 # TASK — Real-capture validation follow-up
 
-**Status: IN PROGRESS. M4 Software Report Completed.**
+**Status: IN PROGRESS. M4 Software Report drafted, pending M3 sign-off. M1 remains blocked.**
 
 ## Purpose
 
@@ -50,4 +50,4 @@ E.g. setting `SENTINEL_BASELINE_SECONDS` lower for a bounded validation run. Thi
 ## M4 Contribution (Aug 28)
 - **Software Validation Report:** Completed `PHASE2_SOFTWARE_VALIDATION_REPORT.md`, verifying the security plumbing and dashboard mapping.
 - **Dashboard Fixes:** Resolved the `EVENT: NORMAL` header mismatch and verified all 5 flagged audit fields against the real schema.
-- **Unblocking M1:** The software vertical slice is now formally documented, unblocking the M1 hardware transition per M3's requirement.
+- **M1 status:** NOT unblocked. Per M3's standing decision, M1's hardware transition stays blocked until M3 actually signs off on this report — drafting/documenting it is not sign-off.
