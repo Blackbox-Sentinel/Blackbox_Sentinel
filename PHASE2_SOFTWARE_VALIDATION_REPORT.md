@@ -27,7 +27,7 @@ The software-only decision boundary was tested for patent-scope compliance.
 | :--- | :--- | :--- |
 | **Authentication** | **PASS** | `transport_auth: VERIFIED` displayed for all signals. |
 | **Freshness** | **PASS** | `freshness_status: FRESH` confirmed within 30s window. |
-| **Independence** | **PASS (Logic)** | `evidence.independent` correctly evaluates source parity. |
+| **Independence** | **PASS (Structural Logic)** | Commit `6e135c2` adds a model-derived signal and a rule-based packet-rate signal with distinct source IDs, signal types, and independently derived HMAC keys; the tested scratch path resolves `evidence.independent: true`. The committed reference artifact is still single-signal. |
 | **Quorum Gate** | **PASS (Logic)** | `quorum.state: NOT_CONFIGURED` correctly indicates that no quorum policy is configured in this reference event. The separate `controller.quorum_state: COLLECTING` field indicates the controller’s current collection state; the two fields are not interchangeable. |
 | **Receipt Generation** | **PASS (Logic)** | Signed Ed25519 receipts are generated for approved decisions in the tested security path; the current reference event does not contain an approved receipt. |
 
@@ -42,15 +42,17 @@ The dashboard maps `hardware.link_state` when the producer supplies it and defau
 As documented in `TASK_Real_Capture_Validation.md`, the model detection values (score, prediction) in the reference file are currently synthetic. The capture-to-model wiring exists in code, but it is not currently runnable as an organic real-capture run on the development path: `BASELINE_DURATION` remains 172800 seconds (48 hours) of wall-clock calibration, and on Windows `sentinel_pipeline.py` routes through `_demo_loop()` rather than the real Scapy capture path. These are data-generation/runtime blockers, not evidence that the bridge code is absent.
 - **Impact:** The security *mechanism* is verified; the detection *accuracy* and real-capture provenance are not.
 
-### 4.2 Single Signal Independence
-The current reference file contains only one signal source (`AEDN-NODE-01`). While the independence-check logic is verified by tests, a representative end-to-end event with two independently authenticated signal sources is not present in the reference artifact. A true multi-signal acceptance demonstration requires M2 to provide a second authenticated signal and M3 to review the resulting decision.
+### 4.2 Representative Event and Detection-Independence Limitations
+The committed reference file still contains only one signal source (`AEDN-NODE-01`), so it does not yet demonstrate the new two-signal path in a committed telemetry event. Commit `6e135c2` closes the structural code-level gap: the model and rule-based heuristic use distinct source IDs, signal types, and independently derived HMAC keys, satisfying the current `TwoSignalGate` definition. However, both paths use the same underlying `packets_per_sec` input, so strict statistical independence of detection bases has not been established and must remain disclosed. A representative committed event with both authenticated signals requires M2 to generate it and M3 to review it.
 
 ### 4.3 M3 Software-Gate Decision
-The current report demonstrates substantial software-boundary plumbing and a valid dashboard mapping for the fields that are actually present. It does not yet satisfy the final M3 gate for the M1 handoff because the reference event has synthetic model values, one signal source, no approved containment receipt, and no demonstrated quorum-approved containment decision.
+The current report demonstrates substantial software-boundary plumbing and a valid dashboard mapping for the fields that are actually present. The structural two-signal implementation is now verified in code and tests, but the final M3 gate for the M1 handoff is not satisfied because the committed reference event remains single-signal, contains synthetic model values, has no approved containment receipt, and has no demonstrated quorum-approved containment decision.
 
 | M3 acceptance condition | Current status |
 |---|---|
-| Two distinct authenticated signals in one representative event | **PENDING** |
+| Two distinct authenticated signals implemented in the software path | **PASS (structural)** |
+| Two distinct authenticated signals present in the committed reference event | **PENDING** |
+| Strictly independent detection bases, beyond the coded source/type/key gate | **PENDING / shared `packets_per_sec` input disclosed** |
 | Correctly evidenced quorum state and approved vote path where configured | **PENDING** |
 | Approved containment decision with verified Ed25519 receipt | **PENDING** |
 | Honest real-versus-synthetic model-data provenance | **PENDING** |
@@ -58,7 +60,7 @@ The current report demonstrates substantial software-boundary plumbing and a val
 | ESP32 hardware-in-loop enforcement | **PENDING / M1** |
 
 ## 5. Conclusion & Recommendation
-The Phase 2 software vertical slice demonstrates substantial core security, telemetry, and dashboard plumbing within the software boundary. The code-level bridge exists, but the current development path has not yet produced a runnable organic capture-to-model reference event.
+The Phase 2 software vertical slice demonstrates substantial core security, telemetry, and dashboard plumbing within the software boundary. The structural two-signal code path is implemented and tested, but the current development path has not yet produced a committed representative two-signal/quorum/receipt event or a runnable organic capture-to-model reference event.
 
 **Recommendation:** Keep M1 blocked. Do not describe this report as final hardware-readiness approval or as an M3 sign-off. First resolve the documented real-capture runtime path, provide a representative approved two-signal/quorum/receipt event with clear provenance, and obtain explicit M3 review. Only then may the team issue the M1 hardware-in-loop handoff.
 
