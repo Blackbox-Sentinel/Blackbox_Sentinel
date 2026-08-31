@@ -39,6 +39,8 @@ from ledger import HashChainLedger
 from predict_v3 import AnomalyScorer, DeviceState
 from evidence_transport import M2EvidenceTransport
 from m3_decision_path import M3DecisionPath
+from m3_security_contracts import EvidenceSignal
+from quorum_state import VoteDecision
 
 
 # ─── Configuration ────────────────────────────────────────────
@@ -156,6 +158,28 @@ class SentinelPipeline:
             max_age_seconds=30.0,
             future_skew_seconds=5.0,
         )
+        # Quorum voter transports. Single-physical-node, software-simulated
+        # multi-voter quorum: both logical voters run on this same node and
+        # process -- this is not a claim of separate physical devices casting
+        # independent votes. Distinct sender_id per voter, same per-node HMAC
+        # derivation as the signal transports above; deliberately not shared
+        # with self.m2_transport/self.m2_transport_heuristic's keys or
+        # sender_ids, so a vote and a signal can never be mistaken for the
+        # same authenticated identity.
+        self.m2_transport_model_voter = M2EvidenceTransport(
+            sender_id=f"{NODE_ID}-model-voter",
+            key_epoch=self.key_epoch,
+            keys_dir=KEYS_DIR,
+            max_age_seconds=30.0,
+            future_skew_seconds=5.0,
+        )
+        self.m2_transport_heuristic_voter = M2EvidenceTransport(
+            sender_id=f"{NODE_ID}-heuristic-voter",
+            key_epoch=self.key_epoch,
+            keys_dir=KEYS_DIR,
+            max_age_seconds=30.0,
+            future_skew_seconds=5.0,
+        )
         self.decision_path = M3DecisionPath(
             ledger=self.ledger,
             node_id=NODE_ID,
@@ -164,6 +188,12 @@ class SentinelPipeline:
             controller_id=os.getenv("SENTINEL_CONTROLLER_ID", "sim-controller"),
             key_epoch=self.key_epoch,
             keys_dir=KEYS_DIR,
+            expected_voters=(
+                self.m2_transport_model_voter.sender_id,
+                self.m2_transport_heuristic_voter.sender_id,
+            ),
+            required_confirmations=2,
+            quorum_deadline_seconds=30.0,
         )
         self.telemetry_writer = TelemetryJsonlWriter(TELEMETRY_PATH)
         self.latest_telemetry = {}
@@ -327,18 +357,21 @@ class SentinelPipeline:
         # request; an anomalous result is still only evidence at this point.
         incident_id = f"{NODE_ID}:window-{self.window_count}"
         now = time.time()
+        model_decision = "CONFIRM" if result.get("is_anomaly", False) else "DENY"
+        model_confidence = float(result.get("probability_attack", result.get("score", 0.0)))
+        model_details = {
+            "score": result.get("score"),
+            "global_prediction": result.get("global_prediction"),
+            "local_prediction": result.get("local_prediction"),
+            "feature_count": result.get("feature_count", 45),
+        }
         model_envelope = self.m2_transport.build_signal_envelope(
             signal_id=f"{incident_id}:model",
             source_id=NODE_ID,
             signal_type="m3_model_result",
-            decision="CONFIRM" if result.get("is_anomaly", False) else "DENY",
-            confidence=float(result.get("probability_attack", result.get("score", 0.0))),
-            details={
-                "score": result.get("score"),
-                "global_prediction": result.get("global_prediction"),
-                "local_prediction": result.get("local_prediction"),
-                "feature_count": result.get("feature_count", 45),
-            },
+            decision=model_decision,
+            confidence=model_confidence,
+            details=model_details,
             timestamp=now,
         )
         # Second, independently-sourced signal: a rule-based packet-rate
@@ -347,23 +380,84 @@ class SentinelPipeline:
         # and distinct signal_type give M3's TwoSignalGate a genuinely
         # independent second signal instead of one model-derived signal alone.
         heuristic = _heuristic_packet_rate_check(features)
+        heuristic_decision = "CONFIRM" if heuristic["is_high_rate"] else "DENY"
+        heuristic_details = {
+            "method": "rule_based_packet_rate_heuristic",
+            "packets_per_sec": heuristic["packets_per_sec"],
+            "threshold": heuristic["threshold"],
+        }
         heuristic_envelope = self.m2_transport_heuristic.build_signal_envelope(
             signal_id=f"{incident_id}:heuristic",
             source_id=self.m2_transport_heuristic.sender_id,
             signal_type="heuristic_packet_rate",
-            decision="CONFIRM" if heuristic["is_high_rate"] else "DENY",
+            decision=heuristic_decision,
             confidence=None,
-            details={
-                "method": "rule_based_packet_rate_heuristic",
-                "packets_per_sec": heuristic["packets_per_sec"],
-                "threshold": heuristic["threshold"],
-            },
+            details=heuristic_details,
+            timestamp=now,
+        )
+
+        # Pre-compute the evidence digest that submit_authenticated() will
+        # itself derive from these same two signals, so quorum votes can
+        # reference the correct digest before that call returns it. Safe to
+        # do here because TwoSignalGate.evaluate() is a pure function with no
+        # replay/sequence state (m3_security_contracts.py), and
+        # AuthenticatedEnvelope.create() stores payload as a shallow dict
+        # copy with no serialization round-trip (authenticated_envelope.py) --
+        # so these replica EvidenceSignal objects are field-for-field
+        # identical to what submit_authenticated() will independently decode
+        # from the real envelopes below. Decoding the real envelopes here
+        # instead (via evidence_signal_from_envelope) would consume them
+        # against the shared ReplayProtector's sequence state, causing the
+        # real submit_authenticated() call to reject them as replays.
+        model_signal_replica = EvidenceSignal(
+            signal_id=f"{incident_id}:model",
+            source_id=NODE_ID,
+            signal_type="m3_model_result",
+            decision=model_decision,
+            authenticated=True,
+            fresh=True,
+            confidence=model_confidence,
+            details=model_details,
+        )
+        heuristic_signal_replica = EvidenceSignal(
+            signal_id=f"{incident_id}:heuristic",
+            source_id=self.m2_transport_heuristic.sender_id,
+            signal_type="heuristic_packet_rate",
+            decision=heuristic_decision,
+            authenticated=True,
+            fresh=True,
+            confidence=None,
+            details=heuristic_details,
+        )
+        predicted_digest = self.decision_path.gate.evaluate(
+            incident_id, (model_signal_replica, heuristic_signal_replica)
+        ).evidence_digest
+
+        # Quorum votes: single-physical-node, software-simulated multi-voter
+        # quorum. Both "voters" run on this same node/process -- this
+        # demonstrates the real QuorumStateMachine vote-authentication and
+        # N-of-M approval logic, not a claim of separate physical devices
+        # independently casting votes.
+        model_vote_envelope = self.m2_transport_model_voter.build_vote_envelope(
+            incident_id=incident_id,
+            voter_id=self.m2_transport_model_voter.sender_id,
+            decision=VoteDecision.CONFIRM,
+            evidence_digest=predicted_digest,
+            vote_sequence=self.window_count,
+            timestamp=now,
+        )
+        heuristic_vote_envelope = self.m2_transport_heuristic_voter.build_vote_envelope(
+            incident_id=incident_id,
+            voter_id=self.m2_transport_heuristic_voter.sender_id,
+            decision=VoteDecision.CONFIRM,
+            evidence_digest=predicted_digest,
+            vote_sequence=self.window_count,
             timestamp=now,
         )
         decision = self.decision_path.submit_authenticated(
             model_result=result,
             evidence_envelopes=[(model_envelope, None), (heuristic_envelope, None)],
-            quorum_envelopes=(),
+            quorum_envelopes=[(model_vote_envelope, None), (heuristic_vote_envelope, None)],
             incident_id=incident_id,
             now=now,
             features=features,
