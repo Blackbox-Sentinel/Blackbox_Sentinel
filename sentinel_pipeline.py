@@ -438,10 +438,19 @@ class SentinelPipeline:
         # demonstrates the real QuorumStateMachine vote-authentication and
         # N-of-M approval logic, not a claim of separate physical devices
         # independently casting votes.
+        # Each voter's vote reflects its own signal's real decision, not a
+        # separate independent judgment process -- the model-voter votes
+        # CONFIRM/DENY based on model_decision, the heuristic-voter based on
+        # heuristic_decision. This still shares the same underlying
+        # detection logic as the corresponding signal (it is not a third,
+        # fully independent evaluation), but it does mean a voter can
+        # genuinely vote DENY and block quorum approval when its own signal
+        # disagrees -- do not overclaim this as true multi-perspective
+        # independent judgment.
         model_vote_envelope = self.m2_transport_model_voter.build_vote_envelope(
             incident_id=incident_id,
             voter_id=self.m2_transport_model_voter.sender_id,
-            decision=VoteDecision.CONFIRM,
+            decision=VoteDecision.CONFIRM if model_decision == "CONFIRM" else VoteDecision.DENY,
             evidence_digest=predicted_digest,
             vote_sequence=self.window_count,
             timestamp=now,
@@ -449,7 +458,7 @@ class SentinelPipeline:
         heuristic_vote_envelope = self.m2_transport_heuristic_voter.build_vote_envelope(
             incident_id=incident_id,
             voter_id=self.m2_transport_heuristic_voter.sender_id,
-            decision=VoteDecision.CONFIRM,
+            decision=VoteDecision.CONFIRM if heuristic_decision == "CONFIRM" else VoteDecision.DENY,
             evidence_digest=predicted_digest,
             vote_sequence=self.window_count,
             timestamp=now,
