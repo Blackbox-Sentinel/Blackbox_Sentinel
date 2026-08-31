@@ -16,6 +16,7 @@ import signal
 import shutil
 import threading
 from datetime import datetime, timezone
+from typing import Any, Mapping
 
 # Ensure stdout handles UTF-8 on Windows
 if sys.platform == "win32":
@@ -75,6 +76,31 @@ CAPTURE_INTERFACE = os.getenv("SENTINEL_INTERFACE", "br0")
 EMERGENCY_SMS = os.getenv("SENTINEL_SMS_TARGET", "+919876543210")
 NODE_ID = os.getenv("SENTINEL_NODE_ID", "AEDN-NODE-01")
 
+# Rule-based second signal source (not a second ML model, not a copy of the
+# AnomalyScorer/predict_v3.py decision). Exists only so M3's TwoSignalGate
+# can be satisfied by two genuinely independent, distinctly-sourced signals
+# instead of one model-derived signal alone.
+HEURISTIC_PACKET_RATE_THRESHOLD = float(
+    os.getenv("SENTINEL_HEURISTIC_PACKET_RATE_THRESHOLD", "500.0")
+)
+
+
+def _heuristic_packet_rate_check(features: Mapping[str, Any]) -> dict:
+    """Simple rule-based packet-rate threshold check.
+
+    Computed directly from this window's real ``packets_per_sec`` feature
+    (the same feature_row/window_features output the model consumes), with
+    no dependency on AnomalyScorer/predict_v3.py. This is a heuristic, not
+    a second ML model -- it exists to give the second evidence signal an
+    honestly independent basis rather than duplicating the model's result.
+    """
+    packets_per_sec = float(features.get("packets_per_sec", 0.0))
+    return {
+        "packets_per_sec": packets_per_sec,
+        "threshold": HEURISTIC_PACKET_RATE_THRESHOLD,
+        "is_high_rate": packets_per_sec > HEURISTIC_PACKET_RATE_THRESHOLD,
+    }
+
 
 class SentinelPipeline:
     """
@@ -110,6 +136,21 @@ class SentinelPipeline:
         self.key_epoch = int(os.getenv("SENTINEL_KEY_EPOCH", "1"))
         self.m2_transport = M2EvidenceTransport(
             sender_id=NODE_ID,
+            key_epoch=self.key_epoch,
+            keys_dir=KEYS_DIR,
+            max_age_seconds=30.0,
+            future_skew_seconds=5.0,
+        )
+        # Second, independently-keyed transport for the rule-based heuristic
+        # signal. Distinct sender_id -> distinct per-node HMAC key (same
+        # derivation mechanism as self.m2_transport, per evidence_transport.py's
+        # load_or_create_node_key/derive_signing_key) -> distinct envelope
+        # sender, which is what M3's independence check actually keys on
+        # (m3_decision_path.py's evidence_signal_from_envelope treats
+        # envelope.sender_id as authoritative for source_id, not any value
+        # copied into the payload).
+        self.m2_transport_heuristic = M2EvidenceTransport(
+            sender_id=f"{NODE_ID}-heuristic",
             key_epoch=self.key_epoch,
             keys_dir=KEYS_DIR,
             max_age_seconds=30.0,
@@ -300,9 +341,28 @@ class SentinelPipeline:
             },
             timestamp=now,
         )
+        # Second, independently-sourced signal: a rule-based packet-rate
+        # heuristic computed straight from this window's real features, not
+        # from the model. Distinct sender_id (self.m2_transport_heuristic)
+        # and distinct signal_type give M3's TwoSignalGate a genuinely
+        # independent second signal instead of one model-derived signal alone.
+        heuristic = _heuristic_packet_rate_check(features)
+        heuristic_envelope = self.m2_transport_heuristic.build_signal_envelope(
+            signal_id=f"{incident_id}:heuristic",
+            source_id=self.m2_transport_heuristic.sender_id,
+            signal_type="heuristic_packet_rate",
+            decision="CONFIRM" if heuristic["is_high_rate"] else "DENY",
+            confidence=None,
+            details={
+                "method": "rule_based_packet_rate_heuristic",
+                "packets_per_sec": heuristic["packets_per_sec"],
+                "threshold": heuristic["threshold"],
+            },
+            timestamp=now,
+        )
         decision = self.decision_path.submit_authenticated(
             model_result=result,
-            evidence_envelopes=[(model_envelope, None)],
+            evidence_envelopes=[(model_envelope, None), (heuristic_envelope, None)],
             quorum_envelopes=(),
             incident_id=incident_id,
             now=now,
