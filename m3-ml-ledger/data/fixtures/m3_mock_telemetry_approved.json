@@ -1,0 +1,141 @@
+{
+  "event_type": "CONTAINMENT_ACCEPTED",
+  "timestamp": "1970-01-01T00:01:40+00:00",
+  "organization_id": "demo_organization",
+  "node_id": "M2-MOCK-NODE-01",
+  "incident_id": "M2-MOCK-NODE-01:window-42",
+  "model": {
+    "state": "alert",
+    "score": 0.94,
+    "probability_attack": 0.94,
+    "threshold": 0.55,
+    "is_anomaly": true,
+    "global_prediction": "ATTACK",
+    "local_prediction": "ANOMALY",
+    "local_detection_enabled": true,
+    "profile_ready": true,
+    "profile_samples": 2048,
+    "feature_count": 45,
+    "timestamp": "2026-08-25T12:00:00+00:00"
+  },
+  "evidence": {
+    "digest": "9544ded3706384878ac8c9ee59f906552e0034893c6b218881fe2e330b9b9e1e",
+    "signal_count": 2,
+    "source_ids": [
+      "M2-MOCK-NODE-01",
+      "M2-MOCK-PEER-02"
+    ],
+    "signal_types": [
+      "ml-v3",
+      "peer"
+    ],
+    "independent": true,
+    "signals": [
+      {
+        "signal_id": "mock-ml-1",
+        "source_id": "M2-MOCK-NODE-01",
+        "signal_type": "ml-v3",
+        "decision": "CONFIRM",
+        "authenticated": true,
+        "fresh": true,
+        "confidence": 0.94,
+        "details": {
+          "simulation": true,
+          "description": "mock M3 known-attack signal"
+        }
+      },
+      {
+        "signal_id": "mock-peer-1",
+        "source_id": "M2-MOCK-PEER-02",
+        "signal_type": "peer",
+        "decision": "CONFIRM",
+        "authenticated": true,
+        "fresh": true,
+        "confidence": 0.91,
+        "details": {
+          "simulation": true,
+          "description": "mock independent M2 peer signal"
+        }
+      }
+    ],
+    "approved": true
+  },
+  "quorum": {
+    "incident_id": "M2-MOCK-NODE-01:window-42",
+    "evidence_digest": "9544ded3706384878ac8c9ee59f906552e0034893c6b218881fe2e330b9b9e1e",
+    "required_confirmations": 2,
+    "expected_voters": [
+      "M2-MOCK-NODE-01",
+      "M2-MOCK-PEER-02"
+    ],
+    "started_at": 100.0,
+    "deadline_at": 130.0,
+    "state": "APPROVED",
+    "vote_counts": {
+      "CONFIRM": 2,
+      "DENY": 0,
+      "ABSTAIN": 0
+    },
+    "votes": [
+      {
+        "incident_id": "M2-MOCK-NODE-01:window-42",
+        "voter_id": "M2-MOCK-NODE-01",
+        "decision": "CONFIRM",
+        "evidence_digest": "9544ded3706384878ac8c9ee59f906552e0034893c6b218881fe2e330b9b9e1e",
+        "sequence": 10,
+        "authenticated": true,
+        "fresh": true,
+        "received_at": 100.0
+      },
+      {
+        "incident_id": "M2-MOCK-NODE-01:window-42",
+        "voter_id": "M2-MOCK-PEER-02",
+        "decision": "CONFIRM",
+        "evidence_digest": "9544ded3706384878ac8c9ee59f906552e0034893c6b218881fe2e330b9b9e1e",
+        "sequence": 11,
+        "authenticated": true,
+        "fresh": true,
+        "received_at": 101.0
+      }
+    ],
+    "rejected_votes": []
+  },
+  "receipt": {
+    "issued": true,
+    "receipt_id": "96946cfd61775befa4de891ce4da8aa70027268e5dabb4f83fb4fded11b20f37",
+    "receipt_sequence": 1,
+    "signature_verified": true,
+    "ledger_bound": true,
+    "algorithm": "Ed25519"
+  },
+  "controller": {
+    "controller_id": "sim-controller",
+    "relay_state": "ISOLATED",
+    "trusted_decision": true,
+    "receipt_verified": true,
+    "quorum_state": "APPROVED",
+    "recovery_required": false,
+    "last_incident_id": "M2-MOCK-NODE-01:window-42",
+    "last_rejection": null
+  },
+  "actuation": {
+    "relay_requested": true,
+    "relay_acknowledged": true,
+    "relay_verified": false,
+    "verification_scope": "software-controller-only"
+  },
+  "hardware": {
+    "enforcement_mode": "software-simulation",
+    "physical_controller_validated": false,
+    "relay_hardware_verified": false,
+    "tamper_state": "UNKNOWN",
+    "key_state": "NOT_EXPOSED",
+    "primary_power_state": "UNKNOWN",
+    "hold_up_power_state": "UNKNOWN"
+  },
+  "recovery": {
+    "required": false,
+    "status": "NOT_REQUIRED"
+  },
+  "schema_version": 1
+}

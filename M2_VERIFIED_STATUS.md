@@ -1035,3 +1035,185 @@ with mtime evidence, not just asserted:
   did not touch the other's, at all, twice in a row.
 
 **Step 4: CLOSED.**
+
+---
+
+### 9. M2-1 wire-format mismatch (B1) — RESOLVED
+
+`B1_Authenticated_Envelope_Draft.md` (§1d) flagged that
+`common/hal/drivers_real.py`'s `RealMesh.broadcast_threat()` wrote
+`MESH_BROADCAST:{threat_payload}\n` — Python's `str(dict)` repr — while
+`m1-hardware/src/esp32_coprocessor.ino`'s `processHostCommand()` parser
+(`:109-134`) only recognizes `ISOLATE`/`CUT`, `ENGAGE`/`RESTORE`, `ARM`,
+`DISARM`, `PING`, and a colon-delimited `GOSSIP:<type>:<score>:<port>`
+command. `MESH_BROADCAST:` matched none of those — the message would
+have been silently dropped by the firmware's parser on real hardware,
+every time.
+
+**Fix applied** in `common/hal/drivers_real.py`: `broadcast_threat()` now
+builds `GOSSIP:{threat_type}:{score}:{port}\n`, matching the firmware
+parser's `cmd.indexOf(':', ...)` / `substring()` field extraction at
+`.ino:123-130` exactly. Because the three real callers of
+`broadcast_threat()` don't agree on payload key names
+(`sentinel_pipeline.py:270-276` uses `threat_score`/no port at all;
+`m2-systems/sim/run_simulation.py:220-225` uses `threat_type`/`victim_port`/no
+score; `m4-gui-venture/hw_simulator_server.py:378` uses `threat`/`score`),
+a small `_first_present()` helper picks fields by alias with explicit
+`is not None` checks (not `or`-chaining, which would incorrectly skip a
+legitimate `score=0.0` or `port=0`), falling back to `"UNKNOWN"`/`0.0`/`0`
+when a caller omits a field entirely. Extraction, casting, and the write
+all happen inside one `try/except`, so a malformed payload (e.g. a
+non-numeric score) returns `False` instead of raising. `threat_type` is
+sanitized (`:`, `\n`, `\r` stripped) since the firmware's parser has no
+escaping of its own and an embedded `\n` would truncate
+`Serial.readStringUntil('\n')` mid-message.
+
+Confirmed still true, explicitly out of scope for this fix: `RealRelay`
+still drives Pi GPIO 17 directly rather than issuing `ISOLATE`/`ENGAGE`
+over the ESP32 serial link (B4's relay-bypass finding), and
+`RealMesh.register_peer_callback()` still has no read loop consuming the
+firmware's outgoing JSON lines (B3's dead-code finding). Also confirmed
+via `.ino:96-105`: the `GOSSIP:` format needs no sender/node-ID field —
+`origin_node` is hardcoded to `"AEDN-RACK-01"` firmware-side and
+`timestamp` is computed from `millis()`, neither taken from serial input
+— though that hardcoded literal is itself a separate M1-owned gap for any
+multi-node deployment, not touched here.
+
+**Verification (mock serial, no ESP32 hardware attached — see caveat
+below):**
+
+```
+--- sentinel_pipeline.py:270-276 shape (no threat_type/port keys at all) ---
+raw bytes written: b'GOSSIP:UNKNOWN:-0.088:0\n'
+firmware-side parse -> threat='UNKNOWN' score=-0.088 port=0
+
+--- score=0.0 explicit, must NOT be skipped for a later non-zero key ---
+raw bytes written: b'GOSSIP:ZERO_SCORE_TEST:0.0:80\n'
+firmware-side parse -> threat='ZERO_SCORE_TEST' score=0.0 port=80
+
+--- malformed score (non-numeric string) must be caught, not crash ---
+broadcast_threat() returned: False
+(nothing written)
+
+--- threat_type containing ':' '\n' '\r' must be sanitized ---
+raw bytes written: b'GOSSIP:EVIL_INJECT_DISARM_TYPE:-0.5:1337\n'
+
+--- very small magnitude score -> Python default float str is scientific ---
+raw bytes written: b'GOSSIP:SCI_NOTATION_SMALL:1.234e-08:443\n'
+firmware-side parse -> threat='SCI_NOTATION_SMALL' score=1.234e-08 port=443
+```
+
+Full run covered all three real caller shapes, both falsy-zero cases
+(`score=0.0`, `port=0`), the malformed-payload case, colon/`\n`/`\r`
+injection sanitization, and three scientific-notation magnitudes
+(`1.234e-08`, `6.7e+16`, `-1.234e-08`) — all ten produced the expected
+`GOSSIP:` line and re-parsed correctly via a line-by-line Python
+transcription of the firmware's own colon-split parsing logic. Full repo
+test suite: `17/17 passed`.
+
+**Caveat, stated plainly:** no physical ESP32 or Arduino toolchain is
+available in this environment (per B2 §1a/1b, this repo doesn't even pin
+a board or core version), so the firmware side of this was never
+compiled or executed — only a faithful Python re-implementation of its
+parsing arithmetic. Whether `String::toFloat()` (documented as wrapping
+`atof()`/`strtod()` in the Arduino core) accepts scientific notation is
+stated here as documented C-standard-library behavior, not as something
+verified against this project's actual firmware build. Hardware-in-loop
+testing of this fix is still outstanding.
+
+---
+
+### 10. M2-2/M2-3: authenticated evidence signal and quorum vote transport — IMPLEMENTED
+
+New module `m2-systems/src/evidence_transport.py` (`M2EvidenceTransport`)
+implements M2's two remaining pieces of Shashwat's directive: providing
+the second independently authenticated signal (M2-2) and submitting
+quorum votes (M2-3), against the Ed25519 contract the team selected
+(`m3-ml-ledger/src/authenticated_envelope.py`, `quorum_state.py`,
+`m3_security_contracts.py` — unchanged since `44c983e`, re-confirmed via
+`git log` before this work started).
+
+**Corrected reuse of `M2SimTransport`'s pattern**
+(`integration/phase2_vertical_slice.py:46-80`): that stand-in wraps a
+`NormalizedTelemetry` object and only *labels* the result of
+`ReplayProtector.accept()` (`transport_auth: "VERIFIED"/"FAILED"`) without
+ever blocking on it — a rejected envelope's telemetry is still emitted.
+`M2EvidenceTransport` wraps the actual `EvidenceSignal`/`QuorumVote`
+payload fields instead, and gates construction on the real `accept()`
+result: `authenticated=accepted, fresh=accepted`, so a rejected envelope
+produces a signal/vote that `TwoSignalGate`/`QuorumStateMachine` will
+themselves correctly exclude — not a scripted label with the object
+passed through as if verified.
+
+**`VoteDecision` handling, made explicit rather than relying on implicit
+coercion:** confirmed `VoteDecision(str, Enum)` (`quorum_state.py:35-38`)
+and confirmed `QuorumStateMachine.vote_counts()` compares `vote.decision`
+against `VoteDecision` members in its tally (`:119-125`). Also confirmed
+`QuorumVote.__post_init__` (`:69-73`) already self-coerces a raw string
+into a `VoteDecision` member at construction time — meaning this was not
+a live bug (a passing string had always worked) — but relying on that
+was an implicit dependency on an M3-owned class's internal behavior.
+Fixed anyway: `build_vote_envelope` now takes `decision: VoteDecision`
+and serializes `decision.value` onto the wire; `authenticate_vote`
+reconstructs via `VoteDecision(payload["decision"])` before constructing
+the `QuorumVote` — mirroring the existing `NormalizedTelemetry`/
+`EventStatus` wire-value pattern (`integration/telemetry.py:39,78-80`).
+
+**Test suite** — `tests/test_evidence_transport.py`, 14 tests: the 5
+required gating cases (valid, stale, replayed, invalid/tampered MAC,
+out-of-order) for both signals and votes (10 tests), plus 4 integration
+tests confirming M3's own objects react correctly to M2's gated output —
+not just that M2 labeled things right:
+- `TwoSignalGate` approves only once two *authenticated* independent
+  signals are present (a stale + a valid signal → `approved=False`; two
+  valid → `approved=True`).
+- `QuorumStateMachine.add_vote()` rejects a replayed (unauthenticated)
+  vote and logs it to `rejected_votes` with reason
+  `"unauthenticated_or_stale"`, incident state stays `COLLECTING`.
+- `QuorumStateMachine.add_vote()` reaches `APPROVED` with two genuinely
+  authenticated `CONFIRM` votes submitted from two separate
+  `M2EvidenceTransport` instances (`node-a`, `node-b`).
+- Cross-type shared-sequence proof (`test_shared_sequence_space_spans_signal_and_vote_submission`):
+  through one transport, a signal at `sequence=5` is accepted, a vote at
+  `sequence=3` is then **rejected as out-of-order**, and a subsequent
+  signal at `sequence=6` is accepted — empirically confirming the shared
+  `ReplayProtector`/`SequenceAllocator` design actually enforces
+  cross-message-type monotonicity, not just that it's a reasonable-sounding
+  choice (see next paragraph for the source-level confirmation this test
+  was built to verify).
+
+Full repo suite after this work: `33/33 passed` (raw pytest output
+confirmed after implementation, again after the `VoteDecision` fix, and
+again after this cross-type test was added).
+
+**Bug found and fixed during this work, not left silent:** the first
+version of the stale-case tests used `timestamp=0.0` to mean "very old."
+`AuthenticatedEnvelope.create()` rejects that outright —
+`if timestamp <= 0: raise ValueError("timestamp must be positive")`
+(`authenticated_envelope.py:118-119`) — before the value ever reaches the
+freshness check, so the test raised instead of exercising staleness.
+Fixed to `timestamp=1.0` (positive, still old enough to trigger the
+freshness rejection against `now=1000.0`).
+
+**Shared-sequence design — confirmed by both reading and test:**
+`ReplayProtector`'s dedup key is `identity = (envelope.sender_id,
+envelope.key_epoch)` (`authenticated_envelope.py:212`, re-verified
+directly a second time in this session) — `message_type` is never read
+anywhere in `accept()`. This is documented as an inline comment in
+`evidence_transport.py` right next to where `SequenceAllocator`/
+`ReplayProtector` are constructed, not just in the class docstring. It is
+*why* `M2EvidenceTransport` deliberately shares one instance of each
+across both signal and vote submission. This was initially only
+confirmed by reading the source (flagged as a gap in an earlier version
+of this section); it is now also confirmed empirically by
+`test_shared_sequence_space_spans_signal_and_vote_submission` (previous
+paragraph) — a vote sequence lower than an already-accepted signal's
+sequence, from the same transport, is genuinely rejected, not merely
+expected to be based on code inspection.
+
+**Still open, unrelated to this work:** `M2EvidenceTransport` is a
+software-simulated transport — the HMAC key lives in-process, there is no
+real network or ESP32 binding here. This is separate from M2-1 (the
+ESP32 `GOSSIP:` wire-format fix, §9 above, already resolved on the actual
+serial link). Hardware-in-loop validation of the whole chain still
+requires M1.

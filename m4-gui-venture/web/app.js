@@ -424,7 +424,7 @@ function clearModalPin() {
 }
 
 function submitModalPin() {
-    if (osState.modalPinBuffer === "1234" || osState.modalPinBuffer.length >= 4) {
+    if (osState.modalPinBuffer === "1234") {
         osState.deviceState = "ARMED";
         osState.relayState = "ENGAGED";
         clearModalPin();

@@ -60,16 +60,38 @@ setup_workspace.bat
 chmod +x setup_workspace.sh && ./setup_workspace.sh
 ```
 
-### 2. Run Sentinel Pipeline
-```bash
-# Run in Simulation Mode with Web GUI & 3D CAD Studio:
-python sentinel_pipeline.py --mode sim --gui
+### 2. Run the Phase 2 Software Vertical Slice
 
-# Run on Physical Raspberry Pi 4 Hardware:
-python sentinel_pipeline.py --mode real
+Run the normalized M2/M3 telemetry producer in one terminal:
+
+```bash
+python3 integration/phase2_vertical_slice.py \\
+  --output m3-ml-ledger/data/phase2_telemetry.jsonl
 ```
 
-### 3. Open Interactive 3D CAD Studio & Ubuntu Kiosk
+Run the canonical 480×320 M4 touchscreen dashboard in a second terminal:
+
+```bash
+python3 gui/dashboard.py \\
+  --telemetry-file m3-ml-ledger/data/phase2_telemetry.jsonl
+```
+
+The slice demonstrates calibration, normal traffic, pending evidence, approved containment, replay/stale rejection, quorum conflict, receipt audit, and recovery-required states. It is software simulation only; ESP32 physical enforcement still requires M1 validation.
+
+### 3. Other Entry Points
+
+```bash
+# Larger M4 desktop simulation GUI:
+python3 m4-gui-venture/src/app.py
+
+# Optional browser kiosk prototype:
+python3 m4-gui-venture/server.py
+
+# Legacy core pipeline without normalized Phase 2 integration:
+python3 sentinel_pipeline.py
+```
+
+### 4. Open Interactive 3D CAD Studio & Ubuntu Kiosk
 - **Ubuntu 24.04 Kiosk Desktop**: [http://localhost:8080/](http://localhost:8080/)
 - **3D CAD Hardware Studio**: [http://localhost:8080/cad_viewer.html](http://localhost:8080/cad_viewer.html)
 - **Virtual Circuit Simulator**: [http://localhost:8080/simulator.html](http://localhost:8080/simulator.html)
@@ -77,6 +99,8 @@ python sentinel_pipeline.py --mode real
 ---
 
 ## 📁 Repository Structure
+
+The Phase 2 integration files are under `integration/`, with the detailed runbook in [`docs/Phase2_Vertical_Slice.md`](docs/Phase2_Vertical_Slice.md).
 
 ```text
 Blackbox_Sentinel/
