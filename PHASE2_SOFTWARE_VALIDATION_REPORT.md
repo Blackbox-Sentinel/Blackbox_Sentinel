@@ -57,7 +57,7 @@ The current report demonstrates substantial software-boundary plumbing and a val
 | Quorum-level independent blocking (negative/vetoing vote path) | **NOT PURSUED** (accepted design decision, M3, 2026-09-09). The layered fail-closed architecture is intentional: evidence-level disagreement stops the flow before quorum is reached, acting as a strict filter. Quorum serves as an additional approval gate on top of evidence agreement, not as an independent veto mechanism. This is deliberate, not a gap. |
 | Approved containment decision with verified Ed25519 receipt | **CLOSED (M3-confirmed)** — the anomalous event in the same artifact shows `CONTAINMENT_ACCEPTED`, `trusted_decision: true`, `receipt.issued: true`, `receipt.signature_verified: true`. |
 | Honest real-versus-synthetic model-data provenance | **PENDING** |
-| Producer-side `hardware.link_state` evidence | **PENDING; current consumer mapping defaults to UNKNOWN** |
+| Producer-side `hardware.link_state` evidence | **MAPPING FIXED (aaccd9b); real hardware evidence still PENDING / M1** — the producer now emits `link_state`, so the dashboard genuinely reads it instead of falling through to its own default. Verified via disclosed substitution: the value itself is still a hardcoded software-simulation literal ("UNKNOWN"), not real sensor data. Do not treat this as hardware validation. |
 | ESP32 hardware-in-loop enforcement | **PENDING / M1** |
 
 ## 5. Conclusion & Recommendation
