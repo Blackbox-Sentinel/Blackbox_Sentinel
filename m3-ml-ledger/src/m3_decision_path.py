@@ -558,6 +558,7 @@ class M3DecisionPath:
                 "key_state": "NOT_EXPOSED",
                 "primary_power_state": "UNKNOWN",
                 "hold_up_power_state": "UNKNOWN",
+                "link_state": "UNKNOWN",
             },
             recovery={
                 "required": controller_status.recovery_required,
