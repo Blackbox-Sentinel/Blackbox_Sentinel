@@ -51,11 +51,11 @@ The current report demonstrates substantial software-boundary plumbing and a val
 | M3 acceptance condition | Current status |
 |---|---|
 | Two distinct authenticated signals implemented in the software path | **PASS (structural)** |
-| Two distinct authenticated signals present in the committed reference event | **PENDING** |
+| Two distinct authenticated signals present in the committed reference event | **CLOSED (M3-confirmed)** — demonstrated in `71612b1`'s `phase2_telemetry_two_signal_synthetic.jsonl`, both events contain two authenticated signals with distinct source IDs and signal types. |
 | Strictly independent detection bases, beyond the coded source/type/key gate | **PENDING / shared `packets_per_sec` input disclosed** |
 | Correctly evidenced quorum state and approved vote path where configured | **Software quorum mechanism demonstrated; independent live voter blocking not demonstrated** — real authenticated vote counting and QuorumStateMachine approval verified in `e41944d`; independent live-path voter blocking remains not demonstrated per the accepted fail-closed design decision (see adjacent row). |
 | Quorum-level independent blocking (negative/vetoing vote path) | **NOT PURSUED** (accepted design decision, M3, 2026-09-09). The layered fail-closed architecture is intentional: evidence-level disagreement stops the flow before quorum is reached, acting as a strict filter. Quorum serves as an additional approval gate on top of evidence agreement, not as an independent veto mechanism. This is deliberate, not a gap. |
-| Approved containment decision with verified Ed25519 receipt | **PENDING** |
+| Approved containment decision with verified Ed25519 receipt | **CLOSED (M3-confirmed)** — the anomalous event in the same artifact shows `CONTAINMENT_ACCEPTED`, `trusted_decision: true`, `receipt.issued: true`, `receipt.signature_verified: true`. |
 | Honest real-versus-synthetic model-data provenance | **PENDING** |
 | Producer-side `hardware.link_state` evidence | **PENDING; current consumer mapping defaults to UNKNOWN** |
 | ESP32 hardware-in-loop enforcement | **PENDING / M1** |
