@@ -1,6 +1,6 @@
 # TASK — Real-capture validation follow-up
 
-**Status: COMPLETED. Real capture validation successfully executed. M3 has officially signed off on the Phase 2 software report. M1 is unblocked.**
+**Status: IN PROGRESS. M4 Software Report drafted, pending M3 sign-off. M1 remains blocked.**
 
 ## Purpose
 
