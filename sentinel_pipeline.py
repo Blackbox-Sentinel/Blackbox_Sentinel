@@ -247,7 +247,7 @@ class SentinelPipeline:
         except ImportError:
             scapy_available = False
 
-        if scapy_available and os.name != "nt":
+        if scapy_available and (os.name != "nt" or os.getenv("SENTINEL_FORCE_REAL_CAPTURE") == "1"):
             self._sniff_scapy()
         else:
             print("[PIPELINE] Network interface capture not active — launching synthetic traffic loop")
