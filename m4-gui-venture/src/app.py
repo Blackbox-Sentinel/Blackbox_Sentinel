@@ -45,8 +45,8 @@ from pin_security import validate_pin
 from security.trusted_controller import TrustedController, load_or_create_shared_secret
 
 # ── Aesthetic Styling Constants ──
-WINDOW_WIDTH = 800
-WINDOW_HEIGHT = 480
+WINDOW_WIDTH = 480
+WINDOW_HEIGHT = 320
 COLOR_BG_DARK = "#090d16"
 COLOR_PANEL_BG = "#111827"
 COLOR_CARD_BG = "#1f293d"
@@ -56,14 +56,23 @@ COLOR_SUCCESS_GREEN = "#00ff88"
 COLOR_WARNING_YELLOW = "#ffd000"
 COLOR_TEXT_MAIN = "#f1f5f9"
 COLOR_TEXT_MUTED = "#94a3b8"
-FONT_TITLE = ("Consolas", 15, "bold")
-FONT_HEADING = ("Consolas", 11, "bold")
-FONT_DATA = ("Consolas", 13, "bold")
-FONT_SMALL = ("Consolas", 9)
-FONT_LOG = ("Consolas", 9)
+FONT_TITLE = ("Consolas", 10, "bold")
+FONT_HEADING = ("Consolas", 8, "bold")
+FONT_DATA = ("Consolas", 9, "bold")
+FONT_SMALL = ("Consolas", 7)
+FONT_LOG = ("Consolas", 7)
 
 
 class SentinelTacticalApp:
+    
+    def _send_uart_anomaly(self):
+        import serial
+        for p in ['/dev/serial0', '/dev/ttyS0', '/dev/ttyAMA0', '/dev/ttyUSB0']:
+            try:
+                with serial.Serial(p, 115200, timeout=1) as ser:
+                    ser.write(b'ANOMALY\n')
+            except Exception:
+                pass
     def __init__(self):
         self.root = tk.Tk()
         self.ui_thread_id = threading.get_ident()
@@ -72,6 +81,7 @@ class SentinelTacticalApp:
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self.root.configure(bg=COLOR_BG_DARK)
         self.root.resizable(False, False)
+        self.root.attributes("-fullscreen", True)
         
         # Center on screen
         screen_w = self.root.winfo_screenwidth()
@@ -120,7 +130,7 @@ class SentinelTacticalApp:
         self.root.after(100, self._update_telemetry_loop)
 
     def _build_header(self):
-        header = tk.Frame(self.root, bg=COLOR_PANEL_BG, height=52)
+        header = tk.Frame(self.root, bg=COLOR_PANEL_BG, height=40)
         header.pack(fill=tk.X)
         header.pack_propagate(False)
 
@@ -141,7 +151,7 @@ class SentinelTacticalApp:
             fg=COLOR_WARNING_YELLOW,
             bg=COLOR_CARD_BG,
             padx=12,
-            pady=4,
+            pady=2,
             relief=tk.RIDGE
         )
         self.lbl_state_badge.pack(side=tk.RIGHT, padx=15, pady=10)
@@ -151,7 +161,7 @@ class SentinelTacticalApp:
         body.pack(fill=tk.BOTH, expand=True, padx=10, pady=6)
 
         # ── Left Column: Metrics & Hardware Telemetry (320px) ──
-        left_col = tk.Frame(body, bg=COLOR_BG_DARK, width=280)
+        left_col = tk.Frame(body, bg=COLOR_BG_DARK, width=220)
         left_col.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=(0, 6))
 
         # Metrics Card
@@ -160,7 +170,7 @@ class SentinelTacticalApp:
 
         # Metric grid
         grid_frame = tk.Frame(metrics_panel, bg=COLOR_PANEL_BG)
-        grid_frame.pack(fill=tk.X, padx=8, pady=6)
+        grid_frame.pack(fill=tk.X, padx=3, pady=6)
 
         self.lbl_pkts = self._make_stat_box(grid_frame, "PACKETS INLINE", "0", COLOR_ACCENT_CYAN, 0, 0)
         self.lbl_anomalies = self._make_stat_box(grid_frame, "ANOMALIES", "0", COLOR_ALERT_RED, 0, 1)
@@ -206,13 +216,13 @@ class SentinelTacticalApp:
             fg=COLOR_TEXT_MAIN,
             font=FONT_LOG,
             relief=tk.FLAT,
-            height=10,
+            height=6,
             wrap=tk.WORD
         )
         self.log_text.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
 
         # Tactical Control Bar
-        ctrl_bar = tk.Frame(right_col, bg=COLOR_PANEL_BG, height=75)
+        ctrl_bar = tk.Frame(right_col, bg=COLOR_PANEL_BG)
         ctrl_bar.pack(fill=tk.X)
 
         # Interactive Buttons
@@ -224,11 +234,11 @@ class SentinelTacticalApp:
             bg="#b91c1c",
             activebackground="#dc2626",
             command=lambda: self.inject_attack("EXFILTRATION"),
-            padx=8,
-            pady=4,
+            padx=3,
+            pady=2,
             relief=tk.GROOVE
         )
-        btn_attack.pack(side=tk.LEFT, padx=6, pady=8)
+        btn_attack.grid(row=0, column=0, padx=4, pady=4, sticky="ew")
 
         btn_syn = tk.Button(
             ctrl_bar,
@@ -238,11 +248,11 @@ class SentinelTacticalApp:
             bg="#7c2d12",
             activebackground="#9a3412",
             command=lambda: self.inject_attack("SYN_FLOOD"),
-            padx=8,
-            pady=4,
+            padx=3,
+            pady=2,
             relief=tk.GROOVE
         )
-        btn_syn.pack(side=tk.LEFT, padx=6, pady=8)
+        btn_syn.grid(row=0, column=1, padx=4, pady=4, sticky="ew")
 
         btn_tamper = tk.Button(
             ctrl_bar,
@@ -252,11 +262,11 @@ class SentinelTacticalApp:
             bg="#4c0519",
             activebackground="#881337",
             command=self.hal.tamper.simulate_tamper,
-            padx=8,
-            pady=4,
+            padx=3,
+            pady=2,
             relief=tk.GROOVE
         )
-        btn_tamper.pack(side=tk.LEFT, padx=6, pady=8)
+        btn_tamper.grid(row=1, column=0, padx=4, pady=4, sticky="ew")
 
         btn_pin = tk.Button(
             ctrl_bar,
@@ -266,15 +276,19 @@ class SentinelTacticalApp:
             bg="#065f46",
             activebackground="#059669",
             command=self._popup_pin_pad,
-            padx=8,
-            pady=4,
+            padx=3,
+            pady=2,
             relief=tk.GROOVE
         )
-        btn_pin.pack(side=tk.RIGHT, padx=6, pady=8)
+        btn_pin.grid(row=1, column=1, padx=4, pady=4, sticky="ew")
+
+        ctrl_bar.grid_columnconfigure(0, weight=1)
+        ctrl_bar.grid_columnconfigure(1, weight=1)
+
 
     def _make_stat_box(self, parent, title, val, color, row, col):
-        card = tk.Frame(parent, bg=COLOR_CARD_BG, padx=8, pady=4)
-        card.grid(row=row, column=col, padx=4, pady=4, sticky="nsew")
+        card = tk.Frame(parent, bg=COLOR_CARD_BG, padx=3, pady=2)
+        card.grid(row=row, column=col, padx=4, pady=2, sticky="nsew")
         parent.grid_columnconfigure(col, weight=1)
 
         tk.Label(card, text=title, font=("Consolas", 8), fg=COLOR_TEXT_MUTED, bg=COLOR_CARD_BG).pack(anchor="w")
@@ -283,7 +297,7 @@ class SentinelTacticalApp:
         return val_lbl
 
     def _build_footer(self):
-        footer = tk.Frame(self.root, bg=COLOR_PANEL_BG, height=24)
+        footer = tk.Frame(self.root, bg=COLOR_PANEL_BG, height=18)
         footer.pack(fill=tk.X, side=tk.BOTTOM)
         footer.pack_propagate(False)
 
@@ -313,17 +327,16 @@ class SentinelTacticalApp:
         self.append_log(f"⚡ [SIMULATOR] Scheduled adversarial injection: {attack_type}")
 
     def _popup_pin_pad(self):
-        """Tactical On-Screen PIN Pad Dialog."""
-        win = tk.Toplevel(self.root)
-        win.title("TACTICAL PIN OVERRIDE")
-        win.geometry("260x320")
-        win.configure(bg=COLOR_PANEL_BG)
-        win.resizable(False, False)
-        win.grab_set()
-
+        if hasattr(self, 'pin_frame') and self.pin_frame.winfo_exists():
+            self.pin_frame.destroy()
+            
+        win = tk.Frame(self.root, bg=COLOR_PANEL_BG, bd=2, relief=tk.RAISED)
+        win.place(relx=0.5, rely=0.5, anchor=tk.CENTER, width=260, height=300)
+        self.pin_frame = win
+        
         tk.Label(win, text="ENTER SECURITY PIN", font=FONT_HEADING, fg=COLOR_ACCENT_CYAN, bg=COLOR_PANEL_BG).pack(pady=8)
         
-        pin_disp = tk.Label(win, text="____", font=("Consolas", 20, "bold"), fg=COLOR_TEXT_MAIN, bg="#000000", width=10)
+        pin_disp = tk.Label(win, text="____", font=("Consolas", 14, "bold"), fg=COLOR_TEXT_MAIN, bg="#000000", width=8)
         pin_disp.pack(pady=5)
 
         pin_str = []
@@ -336,10 +349,13 @@ class SentinelTacticalApp:
         def clear():
             pin_str.clear()
             pin_disp.config(text="____")
+            
+        def close_pad():
+            win.destroy()
 
         def submit():
-            code = "".join(pin_str)
-            if validate_pin(code) and self.scorer.pin_override(code):
+            code_val = "".join(pin_str)
+            if validate_pin(code_val) and self.scorer.pin_override(code_val):
                 self.controller.recover()
                 self.hal.relay.engage()
                 self.hal.led.solid_on()
@@ -347,12 +363,12 @@ class SentinelTacticalApp:
                 self.append_log("✅ [PIN OVERRIDE] Correct PIN entered -> Data Line Restored & ARMED")
                 win.destroy()
             else:
-                messagebox.showerror("PIN REJECTED", "Invalid Override PIN Code!")
-                clear()
+                pin_str.clear()
+                pin_disp.config(text="REJECT", fg="red")
+                win.after(1000, lambda: pin_disp.config(text="____", fg=COLOR_TEXT_MAIN))
 
-        # Keypad Grid
         pad_frame = tk.Frame(win, bg=COLOR_PANEL_BG)
-        pad_frame.pack(pady=8)
+        pad_frame.pack(pady=5)
 
         keys = [
             ("1", 0, 0), ("2", 0, 1), ("3", 0, 2),
@@ -374,6 +390,9 @@ class SentinelTacticalApp:
 
             btn = tk.Button(pad_frame, text=text, font=FONT_HEADING, width=4, height=1, bg=btn_color, fg="#ffffff", command=cmd)
             btn.grid(row=r, column=c, padx=3, pady=3)
+            
+        close_btn = tk.Button(win, text="CANCEL", font=FONT_SMALL, bg="#444", fg="#fff", command=close_pad)
+        close_btn.pack(pady=5)
 
     def _handle_tamper_event(self):
         self.append_log("🚨 [TAMPER ALERT] Casing breached! Zeroizing volatile keys...")
@@ -389,6 +408,7 @@ class SentinelTacticalApp:
                     pass
         self.controller.mark_tampered()
         self.hal.relay.isolate()
+        if hasattr(self, "_send_uart_anomaly"): self._send_uart_anomaly()
         self.hal.led.blink(0.05)
         self.ledger.add_entry("tamper_breach", {"action": "KEYS_ZEROIZED", "relay": "ISOLATED", "controller_state": "TAMPERED"})
         self.lbl_tamper_stat.config(text="🚨 Anti-Tamper: BREACH DETECTED!", fg=COLOR_ALERT_RED)
@@ -453,6 +473,7 @@ class SentinelTacticalApp:
                     time.sleep(0.08)
                     continue
                 self.hal.relay.isolate()
+                if hasattr(self, "_send_uart_anomaly"): self._send_uart_anomaly()
                 self.hal.led.blink(0.2)
                 self.scorer.trigger_lockdown()
 
