@@ -6,7 +6,7 @@
  * Branch: m1-dev
  */
 
-#include <WiFi.h>
+
 
 // ─── Configuration ───────────────────────────────────────────
 const char* WIFI_SSID     = "YOUR_SSID";

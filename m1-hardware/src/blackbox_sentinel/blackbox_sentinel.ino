@@ -12,6 +12,8 @@
 #include <U8g2lib.h>
 #include <Wire.h>
 #include <Preferences.h>
+#include <ArduinoJson.h>
+#include <Ed25519.h>
 
 Preferences preferences;
 
@@ -36,8 +38,8 @@ String EMERGENCY_PHONE = "+919914551405";
 #define PI_TX_PIN 20
 
 // SIM800L GSM UART (Serial1)
-#define GSM_RX_PIN 44
-#define GSM_TX_PIN 43
+#define GSM_RX_PIN 47
+#define GSM_TX_PIN 48
 
 // Hardware Defense Pins
 #define LIMIT_SWITCH_PIN 14
@@ -88,7 +90,10 @@ void setup() {
   // Initialize GSM Shield (Serial1)
   Serial1.begin(115200, SERIAL_8N1, GSM_RX_PIN, GSM_TX_PIN);
 
-  // Initialize Raspberry Pi Bridge (Serial2)
+
+
+  // Initialize Raspberry Pi Bridge (Serial2) - 1024 byte buffer for full receipt payload
+  Serial2.setRxBufferSize(1024);
   Serial2.begin(115200, SERIAL_8N1, PI_RX_PIN, PI_TX_PIN);
 
   // Boot sequence complete
@@ -133,8 +138,7 @@ void triggerIsolate(String reason) {
   Serial.println("🚨 SMS DISPATCHED.");
 }
 
-#include <ArduinoJson.h>
-#include <Ed25519.h>
+
 
 // Trusted Public Key (Base64Url: 3pYnfYvnsd1MUrke1J6MqIj6xd0Dra2kHgrErkz7ids)
 const uint8_t TRUSTED_PUB_KEY[32] = {
@@ -168,7 +172,108 @@ int base64UrlDecode(const char* input, uint8_t* output) {
     return out_len;
 }
 
+void processC2Message(String msg) {
+      if (msg.startsWith("{")) {
+          updateOLED("JSON RX", "Verifying...");
+          // Parse as JSON for Ed25519 Signed Receipt
+          JsonDocument doc;
+          DeserializationError err = deserializeJson(doc, msg);
+          if (!err) {
+              const char* sig_b64 = doc["signature"];
+              JsonVariant payload = doc["payload"];
+              
+              if (sig_b64 && !payload.isNull()) {
+                  // Build canonical JSON with sorted keys (must match Python sort_keys=True)
+                  // Keys in alphabetical order: algorithm, controller_id, decision, event_hash,
+                  // evidence_digest, incident_id, key_epoch, organization_id, quorum,
+                  // receipt_sequence, receipt_version, timestamp
+                  String payload_str = "{";
+                  const char* sorted_keys[] = {
+                      "algorithm", "controller_id", "decision", "event_hash",
+                      "evidence_digest", "incident_id", "key_epoch", "organization_id",
+                      "quorum", "receipt_sequence", "receipt_version", "timestamp"
+                  };
+                  bool first = true;
+                  for (int k = 0; k < 12; k++) {
+                      if (payload[sorted_keys[k]].isNull()) continue;
+                      if (!first) payload_str += ",";
+                      first = false;
+                      payload_str += "\"";
+                      payload_str += sorted_keys[k];
+                      payload_str += "\":";
+                      if (payload[sorted_keys[k]].is<const char*>()) {
+                          payload_str += "\"";
+                          payload_str += payload[sorted_keys[k]].as<const char*>();
+                          payload_str += "\"";
+                      } else {
+                          payload_str += payload[sorted_keys[k]].as<String>();
+                      }
+                  }
+                  payload_str += "}";
+                  
+                  Serial.println("Canonical: " + payload_str);
+                  
+                  // Decode signature
+                  uint8_t sig[64];
+                  int sig_len = base64UrlDecode(sig_b64, sig);
+                  
+                  if (sig_len == 64) {
+                      bool isValid = Ed25519::verify(sig, TRUSTED_PUB_KEY, payload_str.c_str(), payload_str.length());
+                      if (isValid) {
+                          const char* decision = payload["decision"];
+                          if (decision && strcmp(decision, "CONTAIN") == 0) {
+                              if (isAirGapped) {
+                                  updateOLED("!! ISOLATED !!", "SECURE CONTAIN");
+                              } else {
+                                  triggerIsolate("SECURE CONTAIN");
+                              }
+                          } else {
+                              updateOLED("REJECTED", "Not CONTAIN");
+                              Serial.println("Signature valid, but decision not CONTAIN.");
+                          }
+                      } else {
+                          updateOLED("REJECTED SIG", "Invalid Ed25519");
+                          Serial.println("🚨 INVALID Ed25519 SIGNATURE DETECTED! IGNORING COMMAND.");
+                      }
+                  } else {
+                      updateOLED("REJECTED", "Bad Sig Len");
+                      Serial.println("Signature length mismatch.");
+                  }
+              } else {
+                  updateOLED("REJECTED", "Missing Fields");
+              }
+          } else {
+              updateOLED("JSON ERROR", err.c_str());
+          }
+          delay(2000); // Give user time to read the OLED before loop continues
+          if (!isAirGapped) {
+              updateOLED("SYSTEM ARMED", "Monitoring...");
+          } else {
+              updateOLED("!! ISOLATED !!", "SECURE CONTAIN");
+          }
+      }
+      // If the Pi dynamically updates the phone number
+      else if (msg.startsWith("SET_PHONE:")) {
+          EMERGENCY_PHONE = msg.substring(10);
+          EMERGENCY_PHONE.trim();
+          preferences.putString("phone", EMERGENCY_PHONE); // Save to flash!
+          
+          updateOLED("PHONE SAVED", EMERGENCY_PHONE.c_str());
+          Serial.println("Updated Emergency Number: " + EMERGENCY_PHONE);
+          delay(2000);
+          if (!isAirGapped) updateOLED("SYSTEM ARMED", "Monitoring...");
+      }
+      else {
+          // If it's a simple legacy command without JSON signing, REJECT it.
+          Serial.println("🚨 RAW COMMAND REJECTED. MUST BE SIGNED JSON.");
+          updateOLED("REJECTED", "Unsigned");
+          delay(2000);
+          if (!isAirGapped) updateOLED("SYSTEM ARMED", "Monitoring...");
+      }
+}
+
 void loop() {
+
   // ==========================================
   // 1. PHYSICAL TAMPER MONITOR
   // ==========================================
@@ -184,59 +289,13 @@ void loop() {
       msg.trim();
       
       Serial.println("Pi Bridge Rx: " + msg);
-      
-      if (msg.startsWith("{")) {
-          // Parse as JSON for Ed25519 Signed Receipt
-          JsonDocument doc;
-          DeserializationError err = deserializeJson(doc, msg);
-          if (!err) {
-              const char* sig_b64 = doc["signature"];
-              JsonVariant payload = doc["payload"];
-              
-              if (sig_b64 && !payload.isNull()) {
-                  // Serialize payload to canonical string
-                  String payload_str;
-                  serializeJson(payload, payload_str);
-                  
-                  // Decode signature
-                  uint8_t sig[64];
-                  int sig_len = base64UrlDecode(sig_b64, sig);
-                  
-                  if (sig_len == 64) {
-                      bool isValid = Ed25519::verify(sig, TRUSTED_PUB_KEY, payload_str.c_str(), payload_str.length());
-                      if (isValid) {
-                          const char* decision = payload["decision"];
-                          if (decision && strcmp(decision, "CONTAIN") == 0) {
-                              triggerIsolate("SECURE CONTAINMENT");
-                          } else {
-                              Serial.println("Signature valid, but decision not CONTAIN.");
-                          }
-                      } else {
-                          updateOLED("REJECTED SIG", "Invalid Ed25519");
-                          Serial.println("🚨 INVALID Ed25519 SIGNATURE DETECTED! IGNORING COMMAND.");
-                      }
-                  } else {
-                      Serial.println("Signature length mismatch.");
-                  }
-              }
-          }
-      }
-      // If the Pi dynamically updates the phone number
-      else if (msg.startsWith("SET_PHONE:")) {
-          EMERGENCY_PHONE = msg.substring(10);
-          EMERGENCY_PHONE.trim();
-          preferences.putString("phone", EMERGENCY_PHONE); // Save to flash!
-          
-          updateOLED("PHONE UPDATED", EMERGENCY_PHONE);
-          Serial.println("✅ New Phone Number Saved: " + EMERGENCY_PHONE);
-          delay(2000);
-          updateOLED("SYSTEM ARMED", "Monitoring...");
-      }
+      processC2Message(msg);
   }
 
   // ==========================================
   // 3. GSM INCOMING SMS MONITOR
   // ==========================================
+  /*
   if (Serial1.available()) {
       String msg = Serial1.readStringUntil('\n');
       msg.trim();
@@ -245,6 +304,7 @@ void loop() {
          Serial2.println("GSM: " + msg); // Forward to Pi
       }
   }
+  */
 
   // ==========================================
   // 4. SECRET PHYSICAL DISARM (PRG BUTTON)

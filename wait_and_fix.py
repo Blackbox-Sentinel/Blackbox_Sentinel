@@ -1,0 +1,53 @@
+import paramiko
+import time
+import sys
+import socket
+
+HOSTNAME = "sentinel.local"
+USERNAME = "admin"
+PASSWORD = "12345"
+
+print("[*] Waiting for Pi to come back online...")
+
+while True:
+    try:
+        ip = socket.gethostbyname(HOSTNAME)
+        print(f"[+] Found {HOSTNAME} at {ip}. Attempting SSH...")
+        break
+    except socket.gaierror:
+        print("[-] Still offline, waiting 5 seconds...")
+        time.sleep(5)
+
+client = paramiko.SSHClient()
+client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+while True:
+    try:
+        client.connect(ip, username=USERNAME, password=PASSWORD, timeout=5)
+        print("[+] SSH Connected!")
+        break
+    except Exception as e:
+        print(f"[-] SSH not ready yet: {e}")
+        time.sleep(5)
+
+commands = [
+    # Download the CORRECT file (tft35a-overlay.dtb -> tft35a.dtbo)
+    "echo '12345' | sudo -S wget -qO /boot/firmware/overlays/tft35a.dtbo https://raw.githubusercontent.com/goodtft/LCD-show/master/usr/tft35a-overlay.dtb",
+    
+    # Check if the file is there and valid
+    "ls -l /boot/firmware/overlays/tft35a.dtbo",
+    
+    # Force reboot aggressively
+    "echo '12345' | sudo -S reboot -f"
+]
+
+for cmd in commands:
+    print(f"[*] Executing: {cmd}")
+    stdin, stdout, stderr = client.exec_command(cmd)
+    
+    if "reboot" not in cmd:
+        for line in iter(stdout.readline, ""):
+            print("   " + line.strip())
+
+print("[+] Done. Correct driver injected. Rebooting.")
+client.close()

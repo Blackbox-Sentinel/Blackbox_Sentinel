@@ -1,64 +1,57 @@
 """
-BlackBox Sentinel — M1 Hardware: Relay & Tamper Controller
-GPIO-driven relay isolation + anti-tamper switch monitoring.
-Runs on the Raspberry Pi Zero 2 W.
+BlackBox Sentinel — M1 Hardware: Relay & Tamper Controller (Trusted Coprocessor)
+Re-engineered for Patent Scope: The Raspberry Pi no longer drives the relay directly.
+Instead, it communicates via Serial with the ESP32 "Trusted Controller" which 
+acts as an independent hardware enclave for anti-tamper security.
 
 Author: M1 Hardware Engineer
-Branch: m1-dev
-
-Pin Assignments (BCM numbering):
-    GPIO 17 → Relay module IN (active-high = line CUT)
-    GPIO 27 → Tamper switch 1 (lid, pull-up, active-low)
-    GPIO 22 → Tamper switch 2 (side panel, pull-up, active-low)
-    GPIO 23 → Status LED (armed = solid, alert = blink)
+Branch: m1-dev-coprocessor
 """
 
 import time
 import threading
+import serial
 
-# ─── Try to import GPIO (fails gracefully on non-Pi systems) ──
 try:
-    from gpiozero import OutputDevice, Button, LED
-    GPIO_AVAILABLE = True
-except ImportError:
-    GPIO_AVAILABLE = False
-    print("[HW] gpiozero not available — running in simulation mode")
+    # Attempt to open the Serial port to the ESP32
+    # This will be /dev/ttyUSB0 (if plugged via USB) or /dev/serial0 (if wired via UART)
+    esp32_serial = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
+    SERIAL_AVAILABLE = True
+except Exception as e:
+    SERIAL_AVAILABLE = False
+    print(f"[HW] Serial port not available ({e}) — running in simulation mode")
 
 
 class RelayController:
     """
-    Controls the 5V signal relay for physical data-line isolation.
+    Sends secure commands to the ESP32 to control the 5V signal relay.
     
     States:
         - ENGAGED: relay off, data line connected (normal)
         - ISOLATED: relay on, data line physically cut (lockdown)
     """
     
-    RELAY_PIN = 17  # BCM pin
-    
     def __init__(self):
         self.is_isolated = False
-        if GPIO_AVAILABLE:
-            self.relay = OutputDevice(self.RELAY_PIN, active_high=True, initial_value=False)
-            print(f"[RELAY] Initialized on GPIO {self.RELAY_PIN} — ENGAGED (line connected)")
+        if SERIAL_AVAILABLE:
+            print("[RELAY] Initialized via ESP32 Serial — ENGAGED (line connected)")
         else:
-            self.relay = None
-            print("[RELAY] Simulation mode — no physical relay")
+            print("[RELAY] Simulation mode — no physical serial bridge")
     
     def isolate(self):
-        """Fire the relay — physically cut the data line."""
+        """Send ISOLATE command to ESP32."""
         self.is_isolated = True
-        if self.relay:
-            self.relay.on()
-        print("[RELAY] ⚡ ISOLATED — data line CUT")
+        if SERIAL_AVAILABLE:
+            esp32_serial.write(b"CMD:ISOLATE\n")
+        print("[RELAY] ⚡ ISOLATED — Command sent to ESP32 to CUT data line")
         return True
     
     def engage(self):
-        """Re-engage the relay — restore the data line."""
+        """Send ENGAGE command to ESP32."""
         self.is_isolated = False
-        if self.relay:
-            self.relay.off()
-        print("[RELAY] ✅ ENGAGED — data line RESTORED")
+        if SERIAL_AVAILABLE:
+            esp32_serial.write(b"CMD:ENGAGE\n")
+        print("[RELAY] ✅ ENGAGED — Command sent to ESP32 to RESTORE data line")
         return True
     
     def get_state(self) -> str:
@@ -66,41 +59,45 @@ class RelayController:
         return "ISOLATED" if self.is_isolated else "ENGAGED"
     
     def cleanup(self):
-        """Release GPIO resources."""
-        if self.relay:
-            self.relay.close()
+        """No GPIO to clean up; Serial is handled globally."""
+        pass
 
 
 class TamperMonitor:
     """
-    Monitors anti-tamper microswitches on the enclosure.
-    On tamper detection: triggers callback for key zeroization.
-    
-    Switches use internal pull-ups; pressing (enclosure opened) = LOW.
+    Listens to the ESP32 via Serial for hardware tamper events.
+    If the ESP32 detects a breach, it sends "EVENT:TAMPER".
     """
-    
-    TAMPER_PINS = [27, 22]  # BCM pins for lid + side panel switches
     
     def __init__(self, on_tamper_callback=None):
         self.tampered = False
         self.on_tamper = on_tamper_callback or self._default_tamper_handler
-        self.buttons = []
+        self._stop_event = threading.Event()
         
-        if GPIO_AVAILABLE:
-            for pin in self.TAMPER_PINS:
-                btn = Button(pin, pull_up=True, bounce_time=0.1)
-                btn.when_pressed = self._handle_tamper
-                self.buttons.append(btn)
-            print(f"[TAMPER] Monitoring {len(self.TAMPER_PINS)} switches")
+        if SERIAL_AVAILABLE:
+            print("[TAMPER] Monitoring ESP32 for hardware breach events...")
+            self.monitor_thread = threading.Thread(target=self._listen_to_esp32, daemon=True)
+            self.monitor_thread.start()
         else:
             print("[TAMPER] Simulation mode — no physical switches")
+            
+    def _listen_to_esp32(self):
+        """Background thread to read Serial incoming data."""
+        while not self._stop_event.is_set():
+            if esp32_serial.in_waiting > 0:
+                try:
+                    line = esp32_serial.readline().decode('utf-8').strip()
+                    if line == "EVENT:TAMPER":
+                        self._handle_tamper("ESP32_HARDWARE_SWITCH")
+                except Exception:
+                    pass
+            time.sleep(0.1)
     
-    def _handle_tamper(self, button=None):
-        """Called when any tamper switch is triggered."""
+    def _handle_tamper(self, source="SIM"):
+        """Called when a tamper event is received from the ESP32."""
         if not self.tampered:
             self.tampered = True
-            pin = button.pin.number if button else "SIM"
-            print(f"[TAMPER] ⚠️  ENCLOSURE BREACH DETECTED on GPIO {pin}")
+            print(f"[TAMPER] ⚠️  ENCLOSURE BREACH DETECTED via {source}")
             self.on_tamper()
     
     def _default_tamper_handler(self):
@@ -113,80 +110,53 @@ class TamperMonitor:
         self._handle_tamper()
     
     def cleanup(self):
-        """Release GPIO resources."""
-        for btn in self.buttons:
-            btn.close()
+        """Stop the background monitoring thread."""
+        self._stop_event.set()
 
 
 class StatusLED:
     """
-    Status LED indicator.
-    Solid = armed/normal, Blinking = alert, Off = calibrating.
+    Sends LED blink commands to the ESP32 to control the status indicator.
     """
     
-    LED_PIN = 23  # BCM pin
-    
     def __init__(self):
-        self._blink_thread = None
-        self._blinking = False
-        
-        if GPIO_AVAILABLE:
-            self.led = LED(self.LED_PIN)
-            print(f"[LED] Initialized on GPIO {self.LED_PIN}")
+        if SERIAL_AVAILABLE:
+            print("[LED] Initialized via ESP32 Serial")
         else:
-            self.led = None
             print("[LED] Simulation mode")
     
     def solid_on(self):
-        """Solid on — system armed."""
-        self._stop_blink()
-        if self.led:
-            self.led.on()
+        if SERIAL_AVAILABLE:
+            esp32_serial.write(b"CMD:LED_ON\n")
         print("[LED] Solid ON (armed)")
     
     def blink(self, interval=0.3):
-        """Fast blink — alert/anomaly detected."""
-        self._stop_blink()
-        self._blinking = True
-        if self.led:
-            self.led.blink(on_time=interval, off_time=interval)
-        print(f"[LED] Blinking (alert) — {interval}s interval")
+        if SERIAL_AVAILABLE:
+            esp32_serial.write(b"CMD:LED_BLINK\n")
+        print(f"[LED] Blinking (alert)")
     
     def off(self):
-        """Off — calibrating or idle."""
-        self._stop_blink()
-        if self.led:
-            self.led.off()
+        if SERIAL_AVAILABLE:
+            esp32_serial.write(b"CMD:LED_OFF\n")
         print("[LED] Off (calibrating)")
     
-    def _stop_blink(self):
-        self._blinking = False
-    
     def cleanup(self):
-        if self.led:
-            self.led.close()
+        pass
 
 
 # ─── Standalone test ──────────────────────────────────────────
 if __name__ == "__main__":
-    print("=== BlackBox Sentinel M1 — Hardware Controller Test ===\n")
+    print("=== BlackBox Sentinel M1 — ESP32 Trusted Coprocessor Bridge ===\n")
     
-    # Initialize hardware
     relay = RelayController()
     led = StatusLED()
     
     def on_tamper():
-        print("[ZEROIZE] Wiping keys from tmpfs...")
-        # In production: shutil.rmtree('/run/sentinel/keys', ignore_errors=True)
+        print("[ZEROIZE] Wiping keys from memory (Triggered by ESP32!)")
         relay.isolate()
-        led.blink(0.1)
+        led.blink()
     
     tamper = TamperMonitor(on_tamper_callback=on_tamper)
-    
-    # Simulate lifecycle
-    print("\n--- Calibration Mode ---")
-    led.off()
-    time.sleep(1)
     
     print("\n--- Armed Mode ---")
     led.solid_on()
@@ -206,8 +176,7 @@ if __name__ == "__main__":
     tamper.simulate_tamper()
     time.sleep(1)
     
-    # Cleanup
     relay.cleanup()
     led.cleanup()
     tamper.cleanup()
-    print("\n[DONE] Hardware test complete.")
+    print("\n[DONE] Bridge test complete.")

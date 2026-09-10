@@ -1,0 +1,32 @@
+import paramiko
+import socket
+import sys
+
+HOSTNAME = "sentinel.local"
+USERNAME = "admin"
+PASSWORD = "12345"
+
+client = paramiko.SSHClient()
+client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+try:
+    ip = socket.gethostbyname(HOSTNAME)
+    client.connect(ip, username=USERNAME, password=PASSWORD, timeout=5)
+except Exception:
+    sys.exit(1)
+
+commands = [
+    "ls -l /dev/fb*",
+    "sudo journalctl -u sentinel-kiosk.service -n 50 --no-pager",
+    "cat /home/admin/.local/share/xorg/Xorg.0.log | grep -E 'fbdev|SPI|fb1' | tail -n 20"
+]
+
+for cmd in commands:
+    print(f"\n[*] Executing: {cmd}")
+    stdin, stdout, stderr = client.exec_command(cmd)
+    try:
+        output = stdout.read().decode('utf-8', errors='replace')
+        print(output)
+    except Exception as e:
+        pass
+
+client.close()
