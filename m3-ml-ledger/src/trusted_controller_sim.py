@@ -88,6 +88,25 @@ class SimTrustedController:
             self.last_rejection = "receipt_decision_not_contain"
             return False
 
+        # --- HARDWARE UART DISPATCH ---
+        try:
+            import serial
+            import json
+            import time
+            receipt_str = json.dumps(receipt, sort_keys=False, separators=(',', ':')) + "\n"
+            for p in ['/dev/ttyAMA5', '/dev/ttyAMA1', '/dev/serial0', '/dev/ttyAMA0']:
+                try:
+                    with serial.Serial(p, 115200, timeout=1) as ser:
+                        ser.write(receipt_str.encode("utf-8"))
+                        ser.flush()
+                        time.sleep(0.1)
+                        break
+                except Exception:
+                    pass
+        except ImportError:
+            pass
+        # ------------------------------
+
         self.relay_state = "ISOLATED"
         self.trusted_decision = True
         self.recovery_required = False
