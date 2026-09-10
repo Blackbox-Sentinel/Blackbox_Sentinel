@@ -34,7 +34,7 @@ The software-only decision boundary was tested for patent-scope compliance.
 ### 3.3 Dashboard Display Audit
 The M4 GUI now correctly reflects the real nested M2-M3 telemetry schema. The previous "NORMAL" vs "CONTAIN" header mismatch has been resolved by mapping the header directly to the `event_type` emitted by the M3 controller.
 
-The dashboard maps `hardware.link_state` when the producer supplies it and defaults to `UNKNOWN` otherwise. The current M3 hardware telemetry producer does not emit a `link_state` key, so this mapping is complete on the consumer side but the producer-side field remains missing; the current display must not be interpreted as real hardware link validation.
+The dashboard maps `hardware.link_state` when the producer supplies it and defaults to `UNKNOWN` otherwise. The M3 hardware telemetry producer now emits a `link_state` key (fixed in aaccd9b), so this mapping is complete and genuinely reads the producer's value rather than defaulting -- but the value itself remains a hardcoded software-simulation literal ("UNKNOWN"), not real sensor data; the current display must not be interpreted as real hardware link validation.
 
 ## 4. Identified Gaps & Limitations
 
