@@ -67,10 +67,46 @@ class SentinelTacticalApp:
     
     def _send_uart_anomaly(self):
         import serial
+        import json
+        import base64
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives import serialization
+        
+        # Static prototyping key pair (Public Key must be flashed to ESP32)
+        priv_bytes = base64.urlsafe_b64decode("MXiKDM2sa-TwEaJHHiQKBGvt9LzHR7jmX8oZQx4x7Bo=")
+        priv_key = Ed25519PrivateKey.from_private_bytes(priv_bytes)
+        pub_bytes = priv_key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        
+        # 1. Generate the canonical payload according to M3 contracts
+        payload = {
+            "algorithm": "Ed25519",
+            "controller_id": "sim-controller",
+            "decision": "CONTAIN",
+            "incident_id": f"AEDN-NODE-01:{int(time.time())}",
+            "receipt_sequence": 1,
+            "receipt_version": 1
+        }
+        
+        canonical_json = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+        
+        # 2. Sign it
+        sig = priv_key.sign(canonical_json)
+        sig_b64 = base64.urlsafe_b64encode(sig).decode("ascii").rstrip("=")
+        pub_b64 = base64.urlsafe_b64encode(pub_bytes).decode("ascii").rstrip("=")
+        
+        # 3. Create the final M3 receipt format
+        receipt = {
+            "payload": payload,
+            "signature": sig_b64,
+            "public_key": pub_b64
+        }
+        
+        receipt_str = json.dumps(receipt) + "\n"
+        
         for p in ['/dev/serial0', '/dev/ttyS0', '/dev/ttyAMA0', '/dev/ttyUSB0']:
             try:
                 with serial.Serial(p, 115200, timeout=1) as ser:
-                    ser.write(b'ANOMALY\n')
+                    ser.write(receipt_str.encode("utf-8"))
             except Exception:
                 pass
     def __init__(self):
