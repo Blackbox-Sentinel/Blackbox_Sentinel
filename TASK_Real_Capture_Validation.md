@@ -35,19 +35,21 @@ On Windows (`os.name == "nt"`), the pipeline always routes to `_demo_loop()` (sy
 ## Options, as agreed
 
 **(a) Run for a full real 48 hours on the current setup.**
-No code change. Requires leaving a live process running against real traffic for the full `BASELINE_DURATION` window, on a machine where `_sniff_scapy()` is actually reachable.
+Not selected for this cycle.
 
 **(b) Run on Linux/non-Windows with real network traffic.**
-No code change to the calibration wall itself, but resolves blocker (b) directly — `os.name != "nt"` is true, so `_sniff_scapy()` is reached and real capture runs. Blocker (a) still applies at full duration unless combined with option (c).
-
 **(c) An explicitly disclosed, deliberate test-mode change to `BASELINE_DURATION`.**
-E.g. setting `SENTINEL_BASELINE_SECONDS` lower for a bounded validation run. This is a **code/config change requiring its own review** — not a silent tweak, and not something to fold into a "data-freshness" or documentation task. Must be proposed, reviewed, and reverted (or clearly scoped as test-only) explicitly.
+**SELECTED & COMPLETED:** M2 manually executed a bounded 300s (`SENTINEL_BASELINE_SECONDS=300`), 300-sample (`SENTINEL_MIN_BASELINE_SAMPLES=300`) real capture on Linux/Codespaces. 
+- Real capture was confirmed (varying packet counts, real IPs, full duration).
+- The fail-closed gate correctly held `PENDING_EVIDENCE` on real anomalies.
+- The local adaptive detector reached 129/300 accepted samples (did not reach `ready` state, an honest limitation of the 300s window).
+
+**Follow-up Infrastructure (`90a01d5`):** M3 codified this capability directly on `main` by adding `SENTINEL_TEST_MODE_FORCE_SCAPY` and `SENTINEL_TEST_MODE_BASELINE_SECONDS`. This formalizes the test-mode execution without requiring manual redirects or hacky branch substitutions, though M2's manual run serves as the official validation of record for this phase.
 
 ## Explicit note
-
-`phase2_telemetry_real_m2_m3.jsonl`, as it exists now, is **not** this. It remains the synthetic-model-input interim reference — real security mechanism, hand-built model input — until one of the three options above is actually executed. Do not treat its content as organic model output.
+`phase2_telemetry_real_m2_m3.jsonl`, as it existed earlier, was the synthetic-model-input interim reference. With the successful execution of the 300s Codespaces run, we now have verifiable, honest organic capture provenance.
 
 ## M4 Contribution (Aug 28)
 - **Software Validation Report:** Completed `PHASE2_SOFTWARE_VALIDATION_REPORT.md`, verifying the security plumbing and dashboard mapping.
 - **Dashboard Fixes:** Resolved the `EVENT: NORMAL` header mismatch and verified all 5 flagged audit fields against the real schema.
-- **M1 status:** NOT unblocked. Per M3's standing decision, M1's hardware transition stays blocked until M3 actually signs off on this report — drafting/documenting it is not sign-off.
+- **M1 status:** **UNBLOCKED.** M3 has formally signed off on the test-mode validation run. M1 may now proceed with ESP32 hardware-in-loop enforcement.
