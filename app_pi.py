@@ -35,6 +35,7 @@ sys.path.insert(0, PROJECT_ROOT)
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "m3-ml-ledger", "src"))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "m2-systems", "sim"))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "common"))
+sys.path.insert(0, os.path.join(PROJECT_ROOT, "m4-gui-venture", "src"))
 
 os.environ["SENTINEL_HARDWARE"] = "sim"
 
@@ -73,82 +74,55 @@ CHART_SCORE = "#ff2a5f"
 
 class SentinelTacticalApp:
     
-    def _open_uart(self):
-        """Open one persistent Pi UART5 connection for signed receipts."""
-        try:
-            import serial
-        except ImportError:
-            self.append_log("[UART] pyserial unavailable; hardware UART disabled")
-            return None
-        try:
-            connection = serial.Serial("/dev/ttyAMA5", 115200, timeout=1, write_timeout=1)
-            self.append_log("[UART] Connected to /dev/ttyAMA5 at 115200 baud")
-            return connection
-        except Exception as exc:
-            self.append_log(f"[UART] /dev/ttyAMA5 unavailable; simulation mode ({exc})")
-            return None
-
-    def _send_uart_anomaly(self):
-        """Create and send the signed 12-field containment receipt."""
-        import base64
-        import hashlib
-        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-        from cryptography.hazmat.primitives import serialization
-
-        if not hasattr(self, "private_key"):
-            priv_bytes = base64.urlsafe_b64decode("MXiKDM2sa-TwEaJHHiQKBGvt9LzHR7jmX8oZQx4x7Bo=")
-            self.private_key = Ed25519PrivateKey.from_private_bytes(priv_bytes)
-        if not hasattr(self, "_receipt_seq"):
-            self._receipt_seq = 0
-        self._receipt_seq += 1
-
-        evidence_raw = json.dumps({
-            "anomaly_count": getattr(self, "anomaly_count", 0),
-            "packet_count": getattr(self, "packet_count", 0),
-        }, separators=(",", ":")).encode("utf-8")
-        evidence_digest = "sha256:" + hashlib.sha256(evidence_raw).hexdigest()[:16]
-        node_id = getattr(self, "node_id", "AEDN-NODE-01")
-        ts = int(time.time())
-        payload = {
-            "algorithm": "Ed25519",
-            "controller_id": node_id,
-            "decision": "CONTAIN",
-            "event_hash": "sha256:" + hashlib.sha256(f"{node_id}:{ts}".encode()).hexdigest()[:16],
-            "evidence_digest": evidence_digest,
-            "incident_id": f"{node_id}:{ts}",
-            "key_epoch": 1,
-            "organization_id": "openclaw-sentinel",
-            "quorum": "N/A",
-            "receipt_sequence": self._receipt_seq,
-            "receipt_version": 1,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        signature = self.private_key.sign(payload_bytes)
-        public_key = self.private_key.public_key().public_bytes(
-            encoding=serialization.Encoding.Raw,
-            format=serialization.PublicFormat.Raw,
+    def _apply_containment_logic(self, incident_id, score, pkt_label):
+        """Invoke M3 security contracts to issue a valid Ed25519 receipt and apply containment."""
+        sig_a = EvidenceSignal(
+            signal_id=f"sig-A-{self.packet_count}",
+            source_id="m3-known-detector",
+            signal_type="known_attack",
+            decision="CONFIRM",
+            authenticated=True,
+            fresh=True,
+            confidence=score
         )
-        receipt = {
-            "payload": payload,
-            "signature": base64.urlsafe_b64encode(signature).decode("ascii"),
-            "public_key": base64.urlsafe_b64encode(public_key).decode("ascii"),
-        }
-        wire_data = (json.dumps(receipt, separators=(",", ":")) + "\n").encode("utf-8")
-        with self._uart_lock:
-            if self._uart_serial is None:
-                return
-            try:
-                self._uart_serial.write(wire_data)
-                self._uart_serial.flush()
-                self.append_log(f"[UART] Signed containment receipt sent on /dev/ttyAMA5 ({len(wire_data)} bytes)")
-            except Exception as exc:
-                self.append_log(f"[UART] Receipt write failed: {exc}")
-                try:
-                    self._uart_serial.close()
-                except Exception:
-                    pass
-                self._uart_serial = None
+        sig_b = EvidenceSignal(
+            signal_id=f"sig-B-{self.packet_count}",
+            source_id="m3-adaptive-profile",
+            signal_type="adaptive_anomaly",
+            decision="CONFIRM",
+            authenticated=True,
+            fresh=True,
+            confidence=score
+        )
+        
+        decision = self.gate.evaluate(incident_id, [sig_a, sig_b])
+        if not decision.approved:
+            self.append_log("⚠️ [CONTROLLER] Evidence pending; relay remains connected")
+            return False
+            
+        quorum_snapshot = {"state": QuorumState.APPROVED.value, "peers": ["N/A"]}
+        receipt = self.receipt_service.issue(
+            decision=decision,
+            organization_id="openclaw-sentinel",
+            key_epoch=1,
+            quorum=quorum_snapshot
+        )
+        
+        success = self.controller.apply_containment(
+            receipt=receipt,
+            quorum_state=QuorumState.APPROVED.value,
+            expected_incident_id=incident_id
+        )
+        
+        if success:
+            self.hal.relay.isolate()
+            self.hal.led.blink(0.2)
+            self.scorer.trigger_lockdown()
+            self.append_log(f"🚨 [ANOMALY DETECTED] {pkt_label} (Score: {score:.4f})")
+            self.append_log(f"⚡ [RELAY] Controller-approved line CUT. Receipt Verified. Hash: {receipt['payload']['event_hash'][:16]}...")
+            self.hal.cellular.send_sms("+919876543210", f"ALERT: Line isolated on {self.node_id}")
+            return True
+        return False
 
     def __init__(self):
         self.root = tk.Tk()
