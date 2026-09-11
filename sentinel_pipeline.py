@@ -82,25 +82,85 @@ NODE_ID = os.getenv("SENTINEL_NODE_ID", "AEDN-NODE-01")
 # AnomalyScorer/predict_v3.py decision). Exists only so M3's TwoSignalGate
 # can be satisfied by two genuinely independent, distinctly-sourced signals
 # instead of one model-derived signal alone.
-HEURISTIC_PACKET_RATE_THRESHOLD = float(
-    os.getenv("SENTINEL_HEURISTIC_PACKET_RATE_THRESHOLD", "500.0")
+HEURISTIC_HALF_OPEN_THRESHOLD = float(
+    os.getenv("SENTINEL_HEURISTIC_HALF_OPEN_THRESHOLD", "0.45")
+)
+HEURISTIC_RST_RATIO_THRESHOLD = float(
+    os.getenv("SENTINEL_HEURISTIC_RST_RATIO_THRESHOLD", "0.35")
+)
+HEURISTIC_SIZE_UNIFORMITY_THRESHOLD = float(
+    os.getenv("SENTINEL_HEURISTIC_SIZE_UNIFORMITY_THRESHOLD", "0.05")
+)
+HEURISTIC_MIN_TCP_PACKETS = float(
+    os.getenv("SENTINEL_HEURISTIC_MIN_TCP_PACKETS", "20")
 )
 
 
-def _heuristic_packet_rate_check(features: Mapping[str, Any]) -> dict:
-    """Simple rule-based packet-rate threshold check.
+def _heuristic_protocol_state_check(features: Mapping[str, Any]) -> dict:
+    """Rule-based protocol-state anomaly check.
 
-    Computed directly from this window's real ``packets_per_sec`` feature
-    (the same feature_row/window_features output the model consumes), with
-    no dependency on AnomalyScorer/predict_v3.py. This is a heuristic, not
-    a second ML model -- it exists to give the second evidence signal an
-    honestly independent basis rather than duplicating the model's result.
+    DELIBERATELY uses NO volume-derived feature (packets_per_sec,
+    bytes_per_sec, packet_count). Those are the model's dominant inputs, so
+    reusing them made this signal statistically dependent on the model even
+    though it was structurally distinct. This version derives its decision
+    only from TCP handshake state and payload-size distribution, which are
+    orthogonal bases:
+
+      * half_open_ratio = syn_ratio - ack_ratio. A SYN flood or SYN scan
+        opens connections it never acknowledges, so SYNs sharply exceed ACKs.
+        Normal traffic keeps these roughly balanced.
+      * rst_ratio. Port scans and refused connections produce RST storms.
+      * size_uniformity = std_packet_size / max(1.0, p95_packet_size).
+        Automated exfiltration and tunnelling emit near-identical packet
+        sizes, driving this ratio toward zero. Human traffic is ragged.
+
+    A window is flagged only when a protocol-state signature is present,
+    independent of how fast packets are arriving.
     """
-    packets_per_sec = float(features.get("packets_per_sec", 0.0))
+    syn_ratio = float(features.get("syn_ratio", 0.0))
+    ack_ratio = float(features.get("ack_ratio", 0.0))
+    rst_ratio = float(features.get("rst_ratio", 0.0))
+    std_size = float(features.get("std_packet_size", 0.0))
+    p95_size = float(features.get("p95_packet_size", 0.0))
+    tcp_count = float(features.get("tcp_count", 0.0))
+
+    half_open_ratio = syn_ratio - ack_ratio
+    size_uniformity = std_size / max(1.0, p95_size)
+
+    # Require a minimum TCP sample before trusting ratio-based signatures,
+    # otherwise a 2-packet window can trivially hit 1.0 on any ratio.
+    sufficient_sample = tcp_count >= HEURISTIC_MIN_TCP_PACKETS
+
+    half_open_flood = sufficient_sample and half_open_ratio > HEURISTIC_HALF_OPEN_THRESHOLD
+    rst_storm = sufficient_sample and rst_ratio > HEURISTIC_RST_RATIO_THRESHOLD
+    uniform_payload = (
+        sufficient_sample
+        and p95_size > 0.0
+        and size_uniformity < HEURISTIC_SIZE_UNIFORMITY_THRESHOLD
+    )
+
+    triggered = [
+        name for name, hit in (
+            ("half_open_flood", half_open_flood),
+            ("rst_storm", rst_storm),
+            ("uniform_payload", uniform_payload),
+        ) if hit
+    ]
+
     return {
-        "packets_per_sec": packets_per_sec,
-        "threshold": HEURISTIC_PACKET_RATE_THRESHOLD,
-        "is_high_rate": packets_per_sec > HEURISTIC_PACKET_RATE_THRESHOLD,
+        "half_open_ratio": round(half_open_ratio, 4),
+        "rst_ratio": round(rst_ratio, 4),
+        "size_uniformity": round(size_uniformity, 4),
+        "tcp_count": tcp_count,
+        "sufficient_sample": sufficient_sample,
+        "triggered_signatures": triggered,
+        "thresholds": {
+            "half_open_ratio": HEURISTIC_HALF_OPEN_THRESHOLD,
+            "rst_ratio": HEURISTIC_RST_RATIO_THRESHOLD,
+            "size_uniformity": HEURISTIC_SIZE_UNIFORMITY_THRESHOLD,
+            "min_tcp_packets": HEURISTIC_MIN_TCP_PACKETS,
+        },
+        "is_anomalous_protocol_state": bool(triggered),
     }
 
 
@@ -380,17 +440,24 @@ class SentinelPipeline:
         # from the model. Distinct sender_id (self.m2_transport_heuristic)
         # and distinct signal_type give M3's TwoSignalGate a genuinely
         # independent second signal instead of one model-derived signal alone.
-        heuristic = _heuristic_packet_rate_check(features)
-        heuristic_decision = "CONFIRM" if heuristic["is_high_rate"] else "DENY"
+        heuristic = _heuristic_protocol_state_check(features)
+        heuristic_decision = (
+            "CONFIRM" if heuristic["is_anomalous_protocol_state"] else "DENY"
+        )
         heuristic_details = {
-            "method": "rule_based_packet_rate_heuristic",
-            "packets_per_sec": heuristic["packets_per_sec"],
-            "threshold": heuristic["threshold"],
+            "method": "rule_based_protocol_state_heuristic",
+            "basis": "tcp_handshake_state_and_payload_size_distribution",
+            "volume_features_used": "none",
+            "half_open_ratio": heuristic["half_open_ratio"],
+            "rst_ratio": heuristic["rst_ratio"],
+            "size_uniformity": heuristic["size_uniformity"],
+            "triggered_signatures": heuristic["triggered_signatures"],
+            "thresholds": heuristic["thresholds"],
         }
         heuristic_envelope = self.m2_transport_heuristic.build_signal_envelope(
             signal_id=f"{incident_id}:heuristic",
             source_id=self.m2_transport_heuristic.sender_id,
-            signal_type="heuristic_packet_rate",
+            signal_type="heuristic_protocol_state",
             decision=heuristic_decision,
             confidence=None,
             details=heuristic_details,
@@ -423,7 +490,7 @@ class SentinelPipeline:
         heuristic_signal_replica = EvidenceSignal(
             signal_id=f"{incident_id}:heuristic",
             source_id=self.m2_transport_heuristic.sender_id,
-            signal_type="heuristic_packet_rate",
+            signal_type="heuristic_protocol_state",
             decision=heuristic_decision,
             authenticated=True,
             fresh=True,
