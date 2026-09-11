@@ -5,8 +5,8 @@ After=network.target
 [Service]
 Type=simple
 User=sentinel
-WorkingDirectory=/opt/blackbox-sentinel/m2-systems
-ExecStart=/opt/blackbox-sentinel/m2-systems/venv/bin/python src/capture.py
+WorkingDirectory=/opt/blackbox-sentinel
+ExecStart=/opt/blackbox-sentinel/venv/bin/python /opt/blackbox-sentinel/sentinel_pipeline.py
 Restart=always
 RestartSec=5
 StandardOutput=journal

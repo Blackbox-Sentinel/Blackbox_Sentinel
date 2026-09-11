@@ -29,9 +29,12 @@ m2-systems/
 │   ├── run_simulation.py           # Master digital twin end-to-end simulation runner
 │   ├── Dockerfile.sim              # Containerized Sentinel appliance node
 │   └── docker-compose.yml          # Multi-node simulation environment
-└── src/                             # Core Python capture & bridge scripts
-    ├── capture.py                  # Scapy-based network sniffer
-    └── bridge.py                   # Serial bridge
+└── src/                             # Core Python evidence transport
+    └── evidence_transport.py       # Authenticated evidence envelopes (per-node HMAC)
+
+Note: capture.py and bridge.py were archived in 4d964e3 - the real capture
+path is sentinel_pipeline.py at the repo root, which uses
+ml/feature_pipeline_v2.py for packet-to-window feature extraction.
 ```
 
 ---
@@ -62,7 +65,11 @@ python m2-systems/sim/run_simulation.py
 python sentinel_pipeline.py
 ```
 
-### 3. Provision Real Raspberry Pi Zero 2 W Hardware
+### 3. Provision Real Raspberry Pi 4 B Hardware
+
+**Not yet executed on hardware.** These scripts are statically validated
+(shellcheck clean, systemd units verified) but have never run on a real Pi.
+Treat first provisioning as untested.
 Flash microSD card with standard 64-bit Raspberry Pi OS Lite (Debian Bookworm), clone repo, and run:
 ```bash
 sudo bash m2-systems/os/build_sentinel_os.sh
