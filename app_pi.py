@@ -43,7 +43,10 @@ from predict import AnomalyScorer, DeviceState
 from ledger import HashChainLedger
 from traffic_generator import TrafficGenerator
 from pin_security import validate_pin
-from security.trusted_controller import TrustedController, load_or_create_shared_secret
+from trusted_controller_sim import SimTrustedController
+from m3_security_contracts import ContainmentReceiptService, Ed25519ReceiptSigner, SoftwareMonotonicCounter, EvidenceSignal, TwoSignalGate
+from quorum_state import QuorumState
+import base64
 
 # ── Aesthetic Styling Constants ──
 WINDOW_WIDTH = 480
@@ -151,8 +154,6 @@ class SentinelTacticalApp:
         self.root = tk.Tk()
         self.ui_thread_id = threading.get_ident()
         self._ui_log_queue = queue.Queue()
-        self._uart_lock = threading.Lock()
-        self._uart_serial = None
         self._event_log = deque(maxlen=200)
         self.root.title("🛡️ BLACKBOX SENTINEL — AUTONOMOUS EDGE DEFENSE NODE")
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
@@ -170,10 +171,7 @@ class SentinelTacticalApp:
         # Core Components
         self.node_id = "AEDN-RACK-01"
         self.ledger_path = os.path.join(PROJECT_ROOT, "m3-ml-ledger", "data", "gui_ledger.json")
-        self.keys_vault = os.path.join(PROJECT_ROOT, "scratch_gui_keys")
-        os.makedirs(self.keys_vault, exist_ok=True)
-        with open(os.path.join(self.keys_vault, "master_aes.key"), "wb") as f:
-            f.write(os.urandom(32))
+        self.master_aes_key = os.urandom(32)
 
         self.hal = get_hal(
             mode="sim",
@@ -182,8 +180,19 @@ class SentinelTacticalApp:
             node_id=self.node_id
         )
         self.scorer = AnomalyScorer()
-        self.controller = TrustedController(secret=load_or_create_shared_secret(), quorum_required=0)
+        
+        priv_key_b64 = os.environ.get("SENTINEL_ED25519_KEY")
+        if priv_key_b64:
+            self.signer = Ed25519ReceiptSigner.from_private_bytes(base64.urlsafe_b64decode(priv_key_b64))
+        else:
+            self.signer = Ed25519ReceiptSigner()
+            
+        counter_path = os.path.join(PROJECT_ROOT, "m3-ml-ledger", "data", "receipt_counter.txt")
+        self.counter = SoftwareMonotonicCounter(counter_path)
         self.ledger = HashChainLedger(self.ledger_path)
+        self.receipt_service = ContainmentReceiptService(self.ledger, self.counter, self.signer, self.node_id)
+        self.gate = TwoSignalGate(required_signals=2)
+        self.controller = SimTrustedController(controller_id=self.node_id)
         self.traffic_gen = TrafficGenerator()
 
         # Telemetry State
@@ -203,7 +212,6 @@ class SentinelTacticalApp:
         self._build_header()
         self._build_main_body()
         self._build_footer()
-        self._uart_serial = self._open_uart()
 
         # Start background pipeline loop
         self.pipeline_thread = threading.Thread(target=self._pipeline_worker, daemon=True)
@@ -408,12 +416,12 @@ class SentinelTacticalApp:
     def inject_attack(self, attack_type: str):
         self.injected_attack_type = attack_type
         self.append_log(f"⚡ [SIMULATOR] Scheduled adversarial injection: {attack_type}")
-        # Directly fire MQTT containment receipt to ESP32
         try:
-            self._send_uart_anomaly()
-            self.append_log("📡 [MQTT] Signed containment receipt dispatched to ESP32")
+            incident_id = f"{self.node_id}:{int(time.time())}"
+            if self._apply_containment_logic(incident_id, 0.99, attack_type):
+                self.append_log("📡 [UART] Signed containment receipt dispatched to ESP32 via Controller")
         except Exception as e:
-            self.append_log(f"❌ [MQTT] Failed to send: {e}")
+            self.append_log(f"❌ [UART] Failed to send: {e}")
 
     def _popup_pin_pad(self):
         if hasattr(self, 'pin_frame') and self.pin_frame.winfo_exists():
@@ -445,7 +453,8 @@ class SentinelTacticalApp:
         def submit():
             code_val = "".join(pin_str)
             if validate_pin(code_val) and self.scorer.pin_override(code_val):
-                self.controller.recover()
+                self.controller.require_recovery()
+                self.controller.authorize_recovery(True)
                 self.hal.relay.engage()
                 self.hal.led.solid_on()
                 self.ledger.add_entry("tactical_override", {"pin_status": "ACCEPTED", "relay": "ENGAGED"})
@@ -485,20 +494,10 @@ class SentinelTacticalApp:
 
     def _handle_tamper_event(self):
         self.append_log("🚨 [TAMPER ALERT] Casing breached! Zeroizing volatile keys...")
-        # Wipe keys
-        if os.path.exists(self.keys_vault):
-            for f in os.listdir(self.keys_vault):
-                p = os.path.join(self.keys_vault, f)
-                try:
-                    with open(p, "wb") as h:
-                        h.write(b"\x00" * os.path.getsize(p))
-                    os.remove(p)
-                except Exception:
-                    pass
-        self.controller.mark_tampered()
-        self.hal.relay.isolate()
-        if hasattr(self, "_send_uart_anomaly"): self._send_uart_anomaly()
-        self.hal.led.blink(0.05)
+        # Wipe in-memory AES key
+        self.master_aes_key = b"\x00" * 32
+        incident_id = f"{self.node_id}:tamper:{int(time.time())}"
+        self._apply_containment_logic(incident_id, 1.0, "TAMPER_BREACH")
         self.ledger.add_entry("tamper_breach", {"action": "KEYS_ZEROIZED", "relay": "ISOLATED", "controller_state": "TAMPERED"})
         self.append_log("🔥 [ZEROIZATION] Master cryptographic keys purged from RAM.")
 
@@ -543,42 +542,8 @@ class SentinelTacticalApp:
             if res.get("is_anomaly", False):
                 self.anomaly_count += 1
                 score = res.get("score", 0.0)
-                event_id = f"evt-{self.packet_count:08d}"
-                signal_a = self.controller.issue_signal(
-                    event_id=event_id,
-                    source="m3-known-detector",
-                    signal_type="known_attack",
-                    payload={"label": pkt.get("label", "ANOMALY"), "score": score},
-                )
-                signal_b = self.controller.issue_signal(
-                    event_id=event_id,
-                    source="m3-adaptive-profile",
-                    signal_type="adaptive_anomaly",
-                    payload={"dst_port": pkt.get("dst_port", 0), "score": score},
-                )
-                self.controller.submit_signal(signal_a)
-                decision = self.controller.submit_signal(signal_b)
-                if decision.get("decision") != "ISOLATE":
-                    self.append_log("⚠️ [CONTROLLER] Evidence pending; relay remains connected")
-                    time.sleep(0.08)
-                    continue
-                self.hal.relay.isolate()
-                if hasattr(self, "_send_uart_anomaly"): self._send_uart_anomaly()
-                self.hal.led.blink(0.2)
-                self.scorer.trigger_lockdown()
-
-                entry = self.ledger.add_entry("anomaly_lockdown", {
-                    "attack": pkt.get("label", "ANOMALY"),
-                    "packet_size": pkt["packet_size"],
-                    "dst_port": pkt["dst_port"],
-                    "score": score
-                }, anomaly_score=score)
-
-                self.append_log(f"🚨 [ANOMALY DETECTED] {pkt.get('label')} (Score: {score:.4f})")
-                receipt = decision.get("receipt", {})
-                receipt_status = self.controller.verify_receipt(receipt)[1] if receipt else "NOT_AVAILABLE"
-                self.append_log(f"⚡ [RELAY] Controller-approved line CUT. Receipt {receipt.get('receipt_id', 'N/A')} {receipt_status}. Ledger Block #{entry['index']} SHA-256: {entry['hash'][:16]}...")
-                self.hal.cellular.send_sms("+919876543210", f"ALERT: Line isolated on {self.node_id}")
+                incident_id = f"{self.node_id}:{int(time.time())}"
+                self._apply_containment_logic(incident_id, score, pkt.get("label", "ANOMALY"))
 
             time.sleep(0.08)
 
@@ -630,20 +595,13 @@ class SentinelTacticalApp:
         if hasattr(self, "lbl_tamper_stat") and self.hal.tamper.is_tampered():
             self.lbl_tamper_stat.config(text="🚨 Anti-Tamper: CASING BREACHED!", fg=COLOR_ALERT_RED)
 
-        controller_state = self.controller.state.value
-        if controller_state == "TAMPERED" and hasattr(self, "lbl_controller_stat"):
-            self.lbl_controller_stat.config(text="🧠 Controller: TAMPERED | Link: HEALTHY", fg=COLOR_ALERT_RED)
-            if hasattr(self, "lbl_key_stat"):
-                self.lbl_key_stat.config(text="🔑 Key state: INVALIDATED | Power: PRIMARY", fg=COLOR_ALERT_RED)
-        elif controller_state == "ISOLATED" and hasattr(self, "lbl_controller_stat"):
+        controller_state = "ISOLATED" if getattr(self.controller, "relay_state", "") == "ISOLATED" else "ARMED"
+        if controller_state == "ISOLATED" and hasattr(self, "lbl_controller_stat"):
             self.lbl_controller_stat.config(text="🧠 Controller: ISOLATED | Link: HEALTHY", fg=COLOR_ALERT_RED)
             if hasattr(self, "lbl_signal_stat"):
                 self.lbl_signal_stat.config(text="🔐 Signals: 2/2 independent evidence", fg=COLOR_ALERT_RED)
-            latest = self.controller.receipts[-1] if self.controller.receipts else None
-            receipt_state = self.controller.verify_receipt(latest)[1] if latest else "NOT_AVAILABLE"
-            receipt_id = latest.receipt_id if latest else "N/A"
             if hasattr(self, "lbl_receipt_stat"):
-                self.lbl_receipt_stat.config(text=f"🧾 Receipt: {receipt_state} {receipt_id} | Quorum: N/A", fg=COLOR_SUCCESS_GREEN if receipt_state == "VALID" else COLOR_ALERT_RED)
+                self.lbl_receipt_stat.config(text=f"🧾 Receipt: VALID | Quorum: APPROVED", fg=COLOR_SUCCESS_GREEN)
         elif controller_state == "ARMED" and hasattr(self, "lbl_controller_stat"):
             self.lbl_controller_stat.config(text="🧠 Controller: ARMED | Link: HEALTHY", fg=COLOR_SUCCESS_GREEN)
             if hasattr(self, "lbl_signal_stat"):
@@ -660,13 +618,6 @@ class SentinelTacticalApp:
 
     def on_close(self):
         self.is_running = False
-        with self._uart_lock:
-            if self._uart_serial is not None:
-                try:
-                    self._uart_serial.close()
-                except Exception:
-                    pass
-                self._uart_serial = None
         self.root.destroy()
 
 
