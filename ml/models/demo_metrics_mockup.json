@@ -1,0 +1,45 @@
+{
+  "selected_threshold": 0.38,
+  "test_metrics": {
+    "threshold": 0.38,
+    "accuracy": 0.96616982080053,
+    "balanced_accuracy": 0.92339642930012,
+    "attack_precision": 0.90036014405762,
+    "attack_recall": 0.86306098964326,
+    "attack_f1": 0.88131609870740,
+    "false_positive_rate": 0.01626813014504,
+    "true_negative": 5019,
+    "false_positive": 83,
+    "false_negative": 119,
+    "true_positive": 750,
+    "roc_auc": 0.9824447079351088,
+    "pr_auc": 0.9412617458304579
+  },
+  "test_attack_type_recall": {
+    "DoS GoldenEye": {
+      "windows": 425,
+      "detected": 313,
+      "recall": 0.7383125211
+    },
+    "DoS Hulk": {
+      "windows": 621,
+      "detected": 480,
+      "recall": 0.7739112102
+    },
+    "DoS Slowhttptest": {
+      "windows": 258,
+      "detected": 159,
+      "recall": 0.6167104281
+    },
+    "DoS slowloris": {
+      "windows": 353,
+      "detected": 325,
+      "recall": 0.9233015821
+    },
+    "Heartbleed": {
+      "windows": 245,
+      "detected": 242,
+      "recall": 0.9901421045
+    }
+  }
+}
