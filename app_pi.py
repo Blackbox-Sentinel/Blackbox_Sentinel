@@ -15,6 +15,7 @@ import time
 import json
 import threading
 import queue
+from collections import deque
 import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime, timezone
@@ -29,7 +30,7 @@ if sys.platform == "win32":
 
 # Ensure path resolution
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
+PROJECT_ROOT = CURRENT_DIR if os.path.isdir(os.path.join(CURRENT_DIR, "m2-systems")) else os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
 sys.path.insert(0, PROJECT_ROOT)
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "m3-ml-ledger", "src"))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "m2-systems", "sim"))
@@ -61,42 +62,49 @@ FONT_HEADING = ("Consolas", 8, "bold")
 FONT_DATA = ("Consolas", 9, "bold")
 FONT_SMALL = ("Consolas", 7)
 FONT_LOG = ("Consolas", 7)
+CHART_BG = "#070a10"
+CHART_GRID = "#263449"
+CHART_PACKET = "#00f0ff"
+CHART_SCORE = "#ff2a5f"
 
 
 class SentinelTacticalApp:
     
+    def _open_uart(self):
+        """Open one persistent Pi UART5 connection for signed receipts."""
+        try:
+            import serial
+        except ImportError:
+            self.append_log("[UART] pyserial unavailable; hardware UART disabled")
+            return None
+        try:
+            connection = serial.Serial("/dev/ttyAMA5", 115200, timeout=1, write_timeout=1)
+            self.append_log("[UART] Connected to /dev/ttyAMA5 at 115200 baud")
+            return connection
+        except Exception as exc:
+            self.append_log(f"[UART] /dev/ttyAMA5 unavailable; simulation mode ({exc})")
+            return None
+
     def _send_uart_anomaly(self):
-        import serial
-        import json
+        """Create and send the signed 12-field containment receipt."""
         import base64
-        import time
         import hashlib
-        from datetime import datetime, timezone
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
         from cryptography.hazmat.primitives import serialization
-        
-        # Static prototyping key pair (Public Key must be flashed to ESP32)
-        priv_bytes = base64.urlsafe_b64decode("MXiKDM2sa-TwEaJHHiQKBGvt9LzHR7jmX8oZQx4x7Bo=")
-        priv_key = Ed25519PrivateKey.from_private_bytes(priv_bytes)
-        pub_bytes = priv_key.public_key().public_bytes(
-            encoding=serialization.Encoding.Raw,
-            format=serialization.PublicFormat.Raw
-        )
-        if not hasattr(self, 'private_key'):
-            self.private_key = priv_key
-        if not hasattr(self, '_receipt_seq'):
+
+        if not hasattr(self, "private_key"):
+            priv_bytes = base64.urlsafe_b64decode("MXiKDM2sa-TwEaJHHiQKBGvt9LzHR7jmX8oZQx4x7Bo=")
+            self.private_key = Ed25519PrivateKey.from_private_bytes(priv_bytes)
+        if not hasattr(self, "_receipt_seq"):
             self._receipt_seq = 0
         self._receipt_seq += 1
-        
-        # Build evidence digest from latest anomaly data
+
         evidence_raw = json.dumps({
-            "anomaly_count": getattr(self, 'anomaly_count', 0),
-            "packet_count": getattr(self, 'packet_count', 0),
-        }, separators=(',', ':')).encode('utf-8')
+            "anomaly_count": getattr(self, "anomaly_count", 0),
+            "packet_count": getattr(self, "packet_count", 0),
+        }, separators=(",", ":")).encode("utf-8")
         evidence_digest = "sha256:" + hashlib.sha256(evidence_raw).hexdigest()[:16]
-        
-        # Full 12-field ContainmentReceiptService payload
-        node_id = getattr(self, 'node_id', 'AEDN-NODE-01')
+        node_id = getattr(self, "node_id", "AEDN-NODE-01")
         ts = int(time.time())
         payload = {
             "algorithm": "Ed25519",
@@ -110,44 +118,42 @@ class SentinelTacticalApp:
             "quorum": "N/A",
             "receipt_sequence": self._receipt_seq,
             "receipt_version": 1,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-        
-        # Canonical JSON: sorted keys, no spaces (deterministic for signature verification)
-        payload_bytes = json.dumps(payload, sort_keys=True, separators=(',', ':')).encode('utf-8')
-        sig = self.private_key.sign(payload_bytes)
-        sig_b64 = base64.urlsafe_b64encode(sig).decode('utf-8')
-        pub_b64 = base64.urlsafe_b64encode(pub_bytes).decode('utf-8')
-        
+        payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        signature = self.private_key.sign(payload_bytes)
+        public_key = self.private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
         receipt = {
             "payload": payload,
-            "signature": sig_b64,
-            "public_key": pub_b64
+            "signature": base64.urlsafe_b64encode(signature).decode("ascii"),
+            "public_key": base64.urlsafe_b64encode(public_key).decode("ascii"),
         }
-        
-        receipt_str = json.dumps(receipt, sort_keys=False, separators=(',', ':')) + "\n"
-        
-        # UART5 = GPIO 12 (TX) / GPIO 13 (RX) on Pi 4 → /dev/ttyAMA5
-        uart_success = False
-        for p in ['/dev/ttyAMA5', '/dev/ttyAMA1', '/dev/serial0', '/dev/ttyAMA0']:
+        wire_data = (json.dumps(receipt, separators=(",", ":")) + "\n").encode("utf-8")
+        with self._uart_lock:
+            if self._uart_serial is None:
+                return
             try:
-                with serial.Serial(p, 115200, timeout=1) as ser:
-                    ser.write(receipt_str.encode("utf-8"))
-                    ser.flush()
-                    import time as pytime
-                    pytime.sleep(0.1)
-                    uart_success = True
-                    with open("/home/admin/mqtt_debug.log", "a") as f:
-                        f.write(f"UART write SUCCESS on {p}\n")
-                    break  # Stop after first successful write
-            except Exception as e:
-                with open("/home/admin/mqtt_debug.log", "a") as f:
-                    f.write(f"UART FAILED on {p}: {e}\n")
+                self._uart_serial.write(wire_data)
+                self._uart_serial.flush()
+                self.append_log(f"[UART] Signed containment receipt sent on /dev/ttyAMA5 ({len(wire_data)} bytes)")
+            except Exception as exc:
+                self.append_log(f"[UART] Receipt write failed: {exc}")
+                try:
+                    self._uart_serial.close()
+                except Exception:
+                    pass
+                self._uart_serial = None
 
     def __init__(self):
         self.root = tk.Tk()
         self.ui_thread_id = threading.get_ident()
         self._ui_log_queue = queue.Queue()
+        self._uart_lock = threading.Lock()
+        self._uart_serial = None
+        self._event_log = deque(maxlen=200)
         self.root.title("🛡️ BLACKBOX SENTINEL — AUTONOMOUS EDGE DEFENSE NODE")
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self.root.configure(bg=COLOR_BG_DARK)
@@ -187,11 +193,17 @@ class SentinelTacticalApp:
         self.start_time = time.time()
         self.entered_pin = ""
         self.injected_attack_type = None
+        self.latest_anomaly_score = 0.0
+        self._last_metric_time = time.monotonic()
+        self._last_metric_packets = 0
+        self.packet_rate_history = deque(maxlen=40)
+        self.anomaly_score_history = deque(maxlen=40)
 
         # Build UI layout
         self._build_header()
         self._build_main_body()
         self._build_footer()
+        self._uart_serial = self._open_uart()
 
         # Start background pipeline loop
         self.pipeline_thread = threading.Thread(target=self._pipeline_worker, daemon=True)
@@ -228,134 +240,130 @@ class SentinelTacticalApp:
         self.lbl_state_badge.pack(side=tk.RIGHT, padx=15, pady=10)
 
     def _build_main_body(self):
-        body = tk.Frame(self.root, bg=COLOR_BG_DARK)
-        body.pack(fill=tk.BOTH, expand=True, padx=10, pady=6)
+        """Build a kiosk-style home screen with clickable feature applications."""
+        self.shell = tk.Frame(self.root, bg=COLOR_BG_DARK)
+        self.shell.pack(fill=tk.BOTH, expand=True, padx=8, pady=5)
+        self.shell.grid_rowconfigure(1, weight=1)
+        self.shell.grid_columnconfigure(0, weight=1)
 
-        # ── Left Column: Metrics & Hardware Telemetry (320px) ──
-        left_col = tk.Frame(body, bg=COLOR_BG_DARK, width=220)
-        left_col.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=(0, 6))
+        self.home_bar = tk.Frame(self.shell, bg=COLOR_PANEL_BG, height=28)
+        self.home_bar.grid(row=0, column=0, sticky="ew", pady=(0, 5))
+        self.home_bar.grid_propagate(False)
+        tk.Label(self.home_bar, text="HOME / APPLICATIONS", font=FONT_HEADING, fg=COLOR_ACCENT_CYAN, bg=COLOR_PANEL_BG).pack(side=tk.LEFT, padx=8)
+        self.view_title = tk.Label(self.home_bar, text="TACTICAL OVERVIEW", font=FONT_HEADING, fg=COLOR_TEXT_MAIN, bg=COLOR_PANEL_BG)
+        self.view_title.pack(side=tk.RIGHT, padx=8)
 
-        # Metrics Card
-        metrics_panel = tk.LabelFrame(left_col, text=" 📊 SYSTEM TELEMETRY ", font=FONT_SMALL, fg=COLOR_ACCENT_CYAN, bg=COLOR_PANEL_BG, bd=1)
-        metrics_panel.pack(fill=tk.X, pady=(0, 6))
+        self.content_host = tk.Frame(self.shell, bg=COLOR_BG_DARK)
+        self.content_host.grid(row=1, column=0, sticky="nsew")
+        self._build_home_view()
 
-        # Metric grid
-        grid_frame = tk.Frame(metrics_panel, bg=COLOR_PANEL_BG)
-        grid_frame.pack(fill=tk.X, padx=3, pady=6)
+    def _build_home_view(self):
+        self._clear_content()
+        self.view_title.config(text="TACTICAL OVERVIEW")
+        panel = tk.Frame(self.content_host, bg=COLOR_BG_DARK)
+        panel.pack(fill=tk.BOTH, expand=True)
+        tk.Label(panel, text="BLACKBOX SENTINEL", font=("Consolas", 15, "bold"), fg=COLOR_ACCENT_CYAN, bg=COLOR_BG_DARK).pack(pady=(8, 1))
+        tk.Label(panel, text="Select a secure application", font=FONT_SMALL, fg=COLOR_TEXT_MUTED, bg=COLOR_BG_DARK).pack(pady=(0, 7))
+        grid = tk.Frame(panel, bg=COLOR_BG_DARK)
+        grid.pack(expand=True)
+        apps = [
+            ("◉", "ANOMALY\\nGRAPH", "graph", COLOR_ACCENT_CYAN),
+            ("⚠", "TAMPER\\nCONTROLS", "controls", COLOR_ALERT_RED),
+            ("▤", "SYSTEM\\nLOGS", "logs", COLOR_SUCCESS_GREEN),
+            ("▣", "SYSTEM\\nSTATUS", "status", COLOR_WARNING_YELLOW),
+        ]
+        for i, (icon, label, view, color) in enumerate(apps):
+            card = tk.Frame(grid, bg=COLOR_CARD_BG, width=130, height=82, bd=1, relief=tk.RIDGE)
+            card.grid(row=i // 2, column=i % 2, padx=7, pady=6)
+            card.grid_propagate(False)
+            button = tk.Button(card, text=f"{icon}\\n{label}", font=FONT_HEADING, fg=color, bg=COLOR_CARD_BG, activebackground=COLOR_PANEL_BG, activeforeground=COLOR_TEXT_MAIN, relief=tk.FLAT, bd=0, command=lambda v=view: self.show_view(v))
+            button.pack(fill=tk.BOTH, expand=True)
 
-        self.lbl_pkts = self._make_stat_box(grid_frame, "PACKETS INLINE", "0", COLOR_ACCENT_CYAN, 0, 0)
-        self.lbl_anomalies = self._make_stat_box(grid_frame, "ANOMALIES", "0", COLOR_ALERT_RED, 0, 1)
-        self.lbl_blocks = self._make_stat_box(grid_frame, "LEDGER BLOCKS", "1", COLOR_SUCCESS_GREEN, 1, 0)
-        self.lbl_uptime = self._make_stat_box(grid_frame, "UPTIME", "00:00:00", COLOR_TEXT_MAIN, 1, 1)
+    def _clear_content(self):
+        for child in self.content_host.winfo_children():
+            child.destroy()
 
-        # Hardware Status Panel
-        hw_panel = tk.LabelFrame(left_col, text=" 🔌 HARDWARE PERIPHERALS ", font=FONT_SMALL, fg=COLOR_ACCENT_CYAN, bg=COLOR_PANEL_BG, bd=1)
-        hw_panel.pack(fill=tk.BOTH, expand=True)
+    def show_view(self, view):
+        if view == "home":
+            self._build_home_view()
+            return
+        self._clear_content()
+        back = tk.Button(self.home_bar, text="‹ HOME", font=FONT_SMALL, fg=COLOR_ACCENT_CYAN, bg=COLOR_PANEL_BG, activebackground=COLOR_CARD_BG, relief=tk.FLAT, command=self._build_home_view)
+        back.pack(side=tk.LEFT, padx=4)
+        if view == "graph":
+            self.view_title.config(text="ANOMALY GRAPH")
+            self._build_graph_view()
+        elif view == "controls":
+            self.view_title.config(text="TAMPER CONTROLS")
+            self._build_controls_view()
+        elif view == "logs":
+            self.view_title.config(text="SYSTEM LOGS")
+            self._build_logs_view()
+        else:
+            self.view_title.config(text="SYSTEM STATUS")
+            self._build_status_view()
 
-        self.lbl_relay_stat = tk.Label(hw_panel, text="⚡ Relay: ENGAGED (Line Connected)", font=FONT_SMALL, fg=COLOR_SUCCESS_GREEN, bg=COLOR_PANEL_BG, anchor="w")
-        self.lbl_relay_stat.pack(fill=tk.X, padx=10, pady=2)
+    def _build_graph_view(self):
+        tk.Label(self.content_host, text="LIVE PACKET RATE / ANOMALY SCORE", font=FONT_HEADING, fg=COLOR_ACCENT_CYAN, bg=COLOR_BG_DARK).pack(anchor="w", padx=8, pady=5)
+        self.telemetry_canvas = tk.Canvas(self.content_host, bg=CHART_BG, height=150, highlightthickness=1, highlightbackground=CHART_GRID)
+        self.telemetry_canvas.pack(fill=tk.BOTH, expand=True, padx=8, pady=5)
+        self._draw_telemetry_graph()
 
-        self.lbl_led_stat = tk.Label(hw_panel, text="💡 Status LED: ACTIVE", font=FONT_SMALL, fg=COLOR_SUCCESS_GREEN, bg=COLOR_PANEL_BG, anchor="w")
-        self.lbl_led_stat.pack(fill=tk.X, padx=10, pady=2)
+    def _build_controls_view(self):
+        panel = tk.Frame(self.content_host, bg=COLOR_BG_DARK)
+        panel.pack(fill=tk.BOTH, expand=True, padx=10, pady=8)
+        tk.Label(panel, text="AUTHORIZED TACTICAL ACTIONS", font=FONT_HEADING, fg=COLOR_ACCENT_CYAN, bg=COLOR_BG_DARK).pack(pady=5)
+        for text, color, command in (("⚡ INJECT C2 ATTACK", "#b91c1c", lambda: self.inject_attack("EXFILTRATION")), ("💥 SYN FLOOD", "#7c2d12", lambda: self.inject_attack("SYN_FLOOD")), ("🚨 BREACH CASING", "#4c0519", self.hal.tamper.simulate_tamper), ("🔢 PIN OVERRIDE", "#065f46", self._popup_pin_pad)):
+            tk.Button(panel, text=text, font=FONT_HEADING, fg="#ffffff", bg=color, activebackground=COLOR_CARD_BG, relief=tk.GROOVE, command=command).pack(fill=tk.X, pady=4)
 
-        self.lbl_gsm_stat = tk.Label(hw_panel, text="📱 SIM800L: 2G GSM REGISTERED", font=FONT_SMALL, fg=COLOR_TEXT_MUTED, bg=COLOR_PANEL_BG, anchor="w")
-        self.lbl_gsm_stat.pack(fill=tk.X, padx=10, pady=2)
+    def _build_logs_view(self):
+        self.log_text = tk.Text(self.content_host, bg=CHART_BG, fg=COLOR_TEXT_MAIN, font=FONT_LOG, relief=tk.FLAT, wrap=tk.WORD)
+        self.log_text.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        for item in self._event_log:
+            self.log_text.insert(tk.END, item + "\n")
+        self.log_text.see(tk.END)
 
-        self.lbl_tamper_stat = tk.Label(hw_panel, text="🛡️ Anti-Tamper: ENCLOSURE SECURE", font=FONT_SMALL, fg=COLOR_SUCCESS_GREEN, bg=COLOR_PANEL_BG, anchor="w")
-        self.lbl_tamper_stat.pack(fill=tk.X, padx=10, pady=2)
+    def _build_status_view(self):
+        panel = tk.Frame(self.content_host, bg=COLOR_BG_DARK)
+        panel.pack(fill=tk.BOTH, expand=True, padx=12, pady=8)
+        self.lbl_pkts = self._make_stat_box(panel, "PACKETS INLINE", "0", COLOR_ACCENT_CYAN, 0, 0)
+        self.lbl_anomalies = self._make_stat_box(panel, "ANOMALIES", "0", COLOR_ALERT_RED, 0, 1)
+        self.lbl_blocks = self._make_stat_box(panel, "LEDGER BLOCKS", "1", COLOR_SUCCESS_GREEN, 1, 0)
+        self.lbl_uptime = self._make_stat_box(panel, "UPTIME", "00:00:00", COLOR_TEXT_MAIN, 1, 1)
+        tk.Label(panel, text="UART: /dev/ttyAMA5  |  RECEIPT: Ed25519 / 12 fields", font=FONT_SMALL, fg=COLOR_SUCCESS_GREEN, bg=COLOR_BG_DARK).grid(row=2, column=0, columnspan=2, pady=12)
+        for col in (0, 1):
+            panel.grid_columnconfigure(col, weight=1)
 
-        self.lbl_controller_stat = tk.Label(hw_panel, text="🧠 Controller: SAFE | Link: HEALTHY", font=FONT_SMALL, fg=COLOR_SUCCESS_GREEN, bg=COLOR_PANEL_BG, anchor="w")
-        self.lbl_controller_stat.pack(fill=tk.X, padx=10, pady=2)
-        self.lbl_signal_stat = tk.Label(hw_panel, text="🔐 Signals: 0/2 independent evidence", font=FONT_SMALL, fg=COLOR_TEXT_MUTED, bg=COLOR_PANEL_BG, anchor="w")
-        self.lbl_signal_stat.pack(fill=tk.X, padx=10, pady=2)
-        self.lbl_receipt_stat = tk.Label(hw_panel, text="🧾 Receipt: NOT AVAILABLE | Quorum: N/A", font=FONT_SMALL, fg=COLOR_TEXT_MUTED, bg=COLOR_PANEL_BG, anchor="w")
-        self.lbl_receipt_stat.pack(fill=tk.X, padx=10, pady=2)
-        self.lbl_key_stat = tk.Label(hw_panel, text="🔑 Key state: VALID | Power: PRIMARY", font=FONT_SMALL, fg=COLOR_SUCCESS_GREEN, bg=COLOR_PANEL_BG, anchor="w")
-        self.lbl_key_stat.pack(fill=tk.X, padx=10, pady=2)
+    def _make_stat_box(self, parent, title, val, color, row, col):
+        card = tk.Frame(parent, bg=COLOR_CARD_BG, padx=8, pady=7)
+        card.grid(row=row, column=col, padx=5, pady=5, sticky="nsew")
+        parent.grid_columnconfigure(col, weight=1)
+        tk.Label(card, text=title, font=FONT_SMALL, fg=COLOR_TEXT_MUTED, bg=COLOR_CARD_BG).pack(anchor="w")
+        val_lbl = tk.Label(card, text=val, font=FONT_DATA, fg=color, bg=COLOR_CARD_BG)
+        val_lbl.pack(anchor="w")
+        return val_lbl
 
-        # ── Right Column: Logs, Interactive Attacks & PIN Pad ──
-        right_col = tk.Frame(body, bg=COLOR_BG_DARK)
-        right_col.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-
-        # Forensic Ledger Log Viewer
-        log_panel = tk.LabelFrame(right_col, text=" 📋 FORENSIC SHA-256 LEDGER & EVENT STREAM ", font=FONT_SMALL, fg=COLOR_ACCENT_CYAN, bg=COLOR_PANEL_BG, bd=1)
-        log_panel.pack(fill=tk.BOTH, expand=True, pady=(0, 6))
-
-        self.log_text = tk.Text(
-            log_panel,
-            bg="#070a10",
-            fg=COLOR_TEXT_MAIN,
-            font=FONT_LOG,
-            relief=tk.FLAT,
-            height=6,
-            wrap=tk.WORD
-        )
-        self.log_text.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
-
-        # Tactical Control Bar
-        ctrl_bar = tk.Frame(right_col, bg=COLOR_PANEL_BG)
-        ctrl_bar.pack(fill=tk.X)
-
-        # Interactive Buttons
-        btn_attack = tk.Button(
-            ctrl_bar,
-            text="⚡ INJECT C2 ATTACK",
-            font=FONT_SMALL,
-            fg="#ffffff",
-            bg="#b91c1c",
-            activebackground="#dc2626",
-            command=lambda: self.inject_attack("EXFILTRATION"),
-            padx=3,
-            pady=2,
-            relief=tk.GROOVE
-        )
-        btn_attack.grid(row=0, column=0, padx=4, pady=4, sticky="ew")
-
-        btn_syn = tk.Button(
-            ctrl_bar,
-            text="💥 SYN FLOOD",
-            font=FONT_SMALL,
-            fg="#ffffff",
-            bg="#7c2d12",
-            activebackground="#9a3412",
-            command=lambda: self.inject_attack("SYN_FLOOD"),
-            padx=3,
-            pady=2,
-            relief=tk.GROOVE
-        )
-        btn_syn.grid(row=0, column=1, padx=4, pady=4, sticky="ew")
-
-        btn_tamper = tk.Button(
-            ctrl_bar,
-            text="🚨 BREACH CASING",
-            font=FONT_SMALL,
-            fg="#ffffff",
-            bg="#4c0519",
-            activebackground="#881337",
-            command=self.hal.tamper.simulate_tamper,
-            padx=3,
-            pady=2,
-            relief=tk.GROOVE
-        )
-        btn_tamper.grid(row=1, column=0, padx=4, pady=4, sticky="ew")
-
-        btn_pin = tk.Button(
-            ctrl_bar,
-            text="🔢 PIN OVERRIDE",
-            font=FONT_SMALL,
-            fg="#ffffff",
-            bg="#065f46",
-            activebackground="#059669",
-            command=self._popup_pin_pad,
-            padx=3,
-            pady=2,
-            relief=tk.GROOVE
-        )
-        btn_pin.grid(row=1, column=1, padx=4, pady=4, sticky="ew")
-
-        ctrl_bar.grid_columnconfigure(0, weight=1)
-        ctrl_bar.grid_columnconfigure(1, weight=1)
-
+    def _draw_telemetry_graph(self):
+        canvas = getattr(self, "telemetry_canvas", None)
+        if canvas is None or not canvas.winfo_exists():
+            return
+        width = max(1, canvas.winfo_width() or 430)
+        height = max(1, canvas.winfo_height() or 150)
+        canvas.delete("all")
+        canvas.create_line(0, height // 2, width, height // 2, fill=CHART_GRID)
+        canvas.create_text(8, 8, anchor="nw", text="PACKET RATE", fill=CHART_PACKET, font=FONT_SMALL)
+        canvas.create_text(width - 8, 8, anchor="ne", text="ANOMALY SCORE", fill=CHART_SCORE, font=FONT_SMALL)
+        def series(values, color, scale):
+            if len(values) < 2:
+                return
+            points = []
+            for i, value in enumerate(values):
+                x = 8 + i * (width - 16) / max(1, len(values) - 1)
+                y = height - 10 - min(1.0, max(0.0, value / scale)) * (height - 28)
+                points.extend((x, y))
+            canvas.create_line(*points, fill=color, width=2, smooth=True)
+        series(list(self.packet_rate_history), CHART_PACKET, 20.0)
+        series(list(self.anomaly_score_history), CHART_SCORE, 1.0)
 
     def _make_stat_box(self, parent, title, val, color, row, col):
         card = tk.Frame(parent, bg=COLOR_CARD_BG, padx=3, pady=2)
@@ -381,10 +389,14 @@ class SentinelTacticalApp:
         ).pack(side=tk.LEFT, padx=10)
 
     def _append_log_main(self, msg: str):
-        """Append a log entry on Tk's main thread."""
+        """Store events and render them only when the logs app is visible."""
         t_str = datetime.now().strftime("%H:%M:%S")
-        self.log_text.insert(tk.END, f"[{t_str}] {msg}\n")
-        self.log_text.see(tk.END)
+        rendered = f"[{t_str}] {msg}"
+        self._event_log.append(rendered)
+        log_text = getattr(self, "log_text", None)
+        if log_text is not None and log_text.winfo_exists():
+            log_text.insert(tk.END, rendered + "\n")
+            log_text.see(tk.END)
 
     def append_log(self, msg: str):
         """Queue worker messages and render them safely in the GUI thread."""
@@ -488,7 +500,6 @@ class SentinelTacticalApp:
         if hasattr(self, "_send_uart_anomaly"): self._send_uart_anomaly()
         self.hal.led.blink(0.05)
         self.ledger.add_entry("tamper_breach", {"action": "KEYS_ZEROIZED", "relay": "ISOLATED", "controller_state": "TAMPERED"})
-        self.lbl_tamper_stat.config(text="🚨 Anti-Tamper: BREACH DETECTED!", fg=COLOR_ALERT_RED)
         self.append_log("🔥 [ZEROIZATION] Master cryptographic keys purged from RAM.")
 
     def _handle_relay_change(self, state: str):
@@ -505,6 +516,7 @@ class SentinelTacticalApp:
                 return
             pkt = self.traffic_gen.generate_normal_packet()
             res = self.scorer.ingest_features(pkt)
+            self.latest_anomaly_score = float(res.get("score", 0.0) or 0.0)
             self.packet_count += 1
             if i == 119:
                 self.scorer.calibration_start = time.time() - 2000
@@ -525,6 +537,7 @@ class SentinelTacticalApp:
 
             self.packet_count += 1
             res = self.scorer.ingest_features(pkt)
+            self.latest_anomaly_score = float(res.get("score", 0.0) or 0.0)
 
             # Anomaly trigger
             if res.get("is_anomaly", False):
@@ -577,15 +590,28 @@ class SentinelTacticalApp:
             except queue.Empty:
                 break
 
+        now = time.monotonic()
+        interval = max(0.1, now - self._last_metric_time)
+        packet_rate = max(0.0, (self.packet_count - self._last_metric_packets) / interval)
+        self._last_metric_time = now
+        self._last_metric_packets = self.packet_count
+        self.packet_rate_history.append(min(packet_rate, 20.0))
+        self.anomaly_score_history.append(min(max(self.latest_anomaly_score, 0.0), 1.0))
+        self._draw_telemetry_graph()
+
         # Update metrics
-        self.lbl_pkts.config(text=str(self.packet_count))
-        self.lbl_anomalies.config(text=str(self.anomaly_count))
-        self.lbl_blocks.config(text=str(len(self.ledger.chain)))
+        if hasattr(self, "lbl_pkts"):
+            self.lbl_pkts.config(text=str(self.packet_count))
+        if hasattr(self, "lbl_anomalies"):
+            self.lbl_anomalies.config(text=str(self.anomaly_count))
+        if hasattr(self, "lbl_blocks"):
+            self.lbl_blocks.config(text=str(len(self.ledger.chain)))
 
         elapsed = int(time.time() - self.start_time)
         hrs, rem = divmod(elapsed, 3600)
         mins, secs = divmod(rem, 60)
-        self.lbl_uptime.config(text=f"{hrs:02d}:{mins:02d}:{secs:02d}")
+        if hasattr(self, "lbl_uptime"):
+            self.lbl_uptime.config(text=f"{hrs:02d}:{mins:02d}:{secs:02d}")
 
         # Update State Badge
         state = self.scorer.state.value.upper()
@@ -596,31 +622,34 @@ class SentinelTacticalApp:
         elif state in ("ALERT", "LOCKDOWN"):
             self.lbl_state_badge.config(text="🚨 AIR-GAP LOCKDOWN (LINE CUT)", fg=COLOR_ALERT_RED)
 
-        # Update Hardware Status
+        # Update hardware/controller status when the optional status view is open.
         relay_state = self.hal.relay.get_state()
-        if relay_state == "ISOLATED":
-            self.lbl_relay_stat.config(text="⚡ Relay: ISOLATED (Line Severed)", fg=COLOR_ALERT_RED)
-        else:
-            self.lbl_relay_stat.config(text="⚡ Relay: ENGAGED (Line Connected)", fg=COLOR_SUCCESS_GREEN)
-
-        if self.hal.tamper.is_tampered():
+        if hasattr(self, "lbl_relay_stat"):
+            relay_text = "⚡ Relay: ISOLATED (Line Severed)" if relay_state == "ISOLATED" else "⚡ Relay: ENGAGED (Line Connected)"
+            self.lbl_relay_stat.config(text=relay_text, fg=COLOR_ALERT_RED if relay_state == "ISOLATED" else COLOR_SUCCESS_GREEN)
+        if hasattr(self, "lbl_tamper_stat") and self.hal.tamper.is_tampered():
             self.lbl_tamper_stat.config(text="🚨 Anti-Tamper: CASING BREACHED!", fg=COLOR_ALERT_RED)
 
         controller_state = self.controller.state.value
-        if controller_state == "TAMPERED":
+        if controller_state == "TAMPERED" and hasattr(self, "lbl_controller_stat"):
             self.lbl_controller_stat.config(text="🧠 Controller: TAMPERED | Link: HEALTHY", fg=COLOR_ALERT_RED)
-            self.lbl_key_stat.config(text="🔑 Key state: INVALIDATED | Power: PRIMARY", fg=COLOR_ALERT_RED)
-        elif controller_state == "ISOLATED":
+            if hasattr(self, "lbl_key_stat"):
+                self.lbl_key_stat.config(text="🔑 Key state: INVALIDATED | Power: PRIMARY", fg=COLOR_ALERT_RED)
+        elif controller_state == "ISOLATED" and hasattr(self, "lbl_controller_stat"):
             self.lbl_controller_stat.config(text="🧠 Controller: ISOLATED | Link: HEALTHY", fg=COLOR_ALERT_RED)
-            self.lbl_signal_stat.config(text="🔐 Signals: 2/2 independent evidence", fg=COLOR_ALERT_RED)
+            if hasattr(self, "lbl_signal_stat"):
+                self.lbl_signal_stat.config(text="🔐 Signals: 2/2 independent evidence", fg=COLOR_ALERT_RED)
             latest = self.controller.receipts[-1] if self.controller.receipts else None
             receipt_state = self.controller.verify_receipt(latest)[1] if latest else "NOT_AVAILABLE"
             receipt_id = latest.receipt_id if latest else "N/A"
-            self.lbl_receipt_stat.config(text=f"🧾 Receipt: {receipt_state} {receipt_id} | Quorum: N/A", fg=COLOR_SUCCESS_GREEN if receipt_state == "VALID" else COLOR_ALERT_RED)
-        elif controller_state == "ARMED":
+            if hasattr(self, "lbl_receipt_stat"):
+                self.lbl_receipt_stat.config(text=f"🧾 Receipt: {receipt_state} {receipt_id} | Quorum: N/A", fg=COLOR_SUCCESS_GREEN if receipt_state == "VALID" else COLOR_ALERT_RED)
+        elif controller_state == "ARMED" and hasattr(self, "lbl_controller_stat"):
             self.lbl_controller_stat.config(text="🧠 Controller: ARMED | Link: HEALTHY", fg=COLOR_SUCCESS_GREEN)
-            self.lbl_signal_stat.config(text="🔐 Signals: waiting for independent evidence", fg=COLOR_TEXT_MUTED)
-            self.lbl_receipt_stat.config(text="🧾 Receipt: N/A | Quorum: NOT CONFIGURED", fg=COLOR_TEXT_MUTED)
+            if hasattr(self, "lbl_signal_stat"):
+                self.lbl_signal_stat.config(text="🔐 Signals: waiting for independent evidence", fg=COLOR_TEXT_MUTED)
+            if hasattr(self, "lbl_receipt_stat"):
+                self.lbl_receipt_stat.config(text="🧾 Receipt: N/A | Quorum: NOT CONFIGURED", fg=COLOR_TEXT_MUTED)
 
         if self.is_running:
             self.root.after(100, self._update_telemetry_loop)
@@ -631,6 +660,13 @@ class SentinelTacticalApp:
 
     def on_close(self):
         self.is_running = False
+        with self._uart_lock:
+            if self._uart_serial is not None:
+                try:
+                    self._uart_serial.close()
+                except Exception:
+                    pass
+                self._uart_serial = None
         self.root.destroy()
 
 
