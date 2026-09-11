@@ -71,9 +71,3 @@ Matching the project's established pattern (per-node keys, disclosed substitutio
 ## 5. Ask
 
 **M3's explicit sign-off on this plan — the Codespaces/Linux platform in §1, the 300s duration, and the `MIN_BASELINE_SAMPLES` choice in §2 — before any run happens.** Not a retroactive review of a run already performed. This is a request for direction, not a notification of action taken.
-
----
-## 6. Execution Record (Post-Approval)
-- **Approval:** M3 signed off on the 300s duration on the Codespaces platform with `SENTINEL_MIN_BASELINE_SAMPLES=300`.
-- **Manual Run (M2):** The run was executed manually in the Codespace environment. Real capture was confirmed (varying packet counts, real IPs), and the fail-closed gate successfully held `PENDING_EVIDENCE` on anomalies. The local adaptive detector reached 129/300 accepted samples, correctly failing to reach the `ready` state within the 300s traffic constraint. This run stands as the official validation record.
-- **Formal Infrastructure Integration (`90a01d5`):** Instead of keeping the capability as a manual script or branch-only hack, M3 codified the disclosed `TEST_MODE` configuration directly on `main` via `SENTINEL_TEST_MODE_FORCE_SCAPY` and `SENTINEL_TEST_MODE_BASELINE_SECONDS`. This formalized the capability for future runs, fully disclosed and opt-in.

@@ -39,15 +39,14 @@ The dashboard maps `hardware.link_state` when the producer supplies it and defau
 ## 4. Identified Gaps & Limitations
 
 ### 4.1 Data Provenance (Synthetic Content)
-As previously documented in `TASK_Real_Capture_Validation.md`, the model detection values were originally synthetic. 
-- **Update (Aug 2026):** M2 has successfully executed a bounded 300s real-capture run on the Linux/Codespaces platform (`SENTINEL_BASELINE_SECONDS=300`). Real capture was confirmed (varying packet counts, full duration), and the fail-closed gate successfully held `PENDING_EVIDENCE` on anomalies. The local adaptive detector reached 129/300 accepted samples. 
-- **Impact:** The real-capture data provenance gap is officially **CLOSED**.
+As documented in `TASK_Real_Capture_Validation.md`, the model detection values (score, prediction) in the reference file are currently synthetic. The capture-to-model wiring exists in code, but it is not currently runnable as an organic real-capture run on the development path: `BASELINE_DURATION` remains 172800 seconds (48 hours) of wall-clock calibration, and on Windows `sentinel_pipeline.py` routes through `_demo_loop()` rather than the real Scapy capture path. These are data-generation/runtime blockers, not evidence that the bridge code is absent.
+- **Impact:** The security *mechanism* is verified; the detection *accuracy* and real-capture provenance are not.
 
 ### 4.2 Representative Event and Detection-Independence Limitations
 The committed reference file still contains only one signal source (`AEDN-NODE-01`), so it does not yet demonstrate the new two-signal path in a committed telemetry event. Commit `6e135c2` closes the structural code-level gap: the model and rule-based heuristic use distinct source IDs, signal types, and independently derived HMAC keys, satisfying the current `TwoSignalGate` definition. However, both paths use the same underlying `packets_per_sec` input, so strict statistical independence of detection bases has not been established and must remain disclosed. A representative committed event with both authenticated signals requires M2 to generate it and M3 to review it.
 
 ### 4.3 M3 Software-Gate Decision
-The current report demonstrates substantial software-boundary plumbing and a valid dashboard mapping for the fields that are actually present. The structural two-signal implementation is now verified in code and tests, and the data provenance gap has been closed. The final M3 gate for the M1 handoff is now significantly closer to completion.
+The current report demonstrates substantial software-boundary plumbing and a valid dashboard mapping for the fields that are actually present. The structural two-signal implementation is now verified in code and tests, but the final M3 gate for the M1 handoff is not satisfied because the committed reference event remains single-signal, contains synthetic model values, has no approved containment receipt, and has no demonstrated quorum-approved containment decision.
 
 | M3 acceptance condition | Current status |
 |---|---|
@@ -57,9 +56,9 @@ The current report demonstrates substantial software-boundary plumbing and a val
 | Correctly evidenced quorum state and approved vote path where configured | **Software quorum mechanism demonstrated; independent live voter blocking not demonstrated** — real authenticated vote counting and QuorumStateMachine approval verified in `e41944d`; independent live-path voter blocking remains not demonstrated per the accepted fail-closed design decision (see adjacent row). |
 | Quorum-level independent blocking (negative/vetoing vote path) | **NOT PURSUED** (accepted design decision, M3, 2026-09-09). The layered fail-closed architecture is intentional: evidence-level disagreement stops the flow before quorum is reached, acting as a strict filter. Quorum serves as an additional approval gate on top of evidence agreement, not as an independent veto mechanism. This is deliberate, not a gap. |
 | Approved containment decision with verified Ed25519 receipt | **CLOSED (M3-confirmed)** — the anomalous event in the same artifact shows `CONTAINMENT_ACCEPTED`, `trusted_decision: true`, `receipt.issued: true`, `receipt.signature_verified: true`. |
-| Honest real-versus-synthetic model-data provenance | **DONE** — Real organic capture verified via M2's bounded 300s Codespaces run. |
+| Honest real-versus-synthetic model-data provenance | **PENDING** |
 | Producer-side `hardware.link_state` evidence | **MAPPING FIXED (aaccd9b); real hardware evidence still PENDING / M1** — the producer now emits `link_state`, so the dashboard genuinely reads it instead of falling through to its own default. Verified via disclosed substitution: the value itself is still a hardcoded software-simulation literal ("UNKNOWN"), not real sensor data. Do not treat this as hardware validation. |
-| ESP32 hardware-in-loop enforcement | **UNBLOCKED / M1 MAY PROCEED** |
+| ESP32 hardware-in-loop enforcement | **PENDING / M1** |
 
 ## 5. Conclusion & Recommendation
 The Phase 2 software vertical slice demonstrates substantial core security, telemetry, and dashboard plumbing within the software boundary. The structural two-signal code path is implemented and tested, but the current development path has not yet produced a committed representative two-signal/quorum/receipt event or a runnable organic capture-to-model reference event.
