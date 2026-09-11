@@ -1,0 +1,71 @@
+/home/codespace/.local/lib/python3.14/site-packages/scapy/layers/tls/crypto/groups.py:25: CryptographyDeprecationWarning: Diffie-Hellman over finite fields (FFDH) is deprecated and support will be removed in a future release. Use a more modern key exchange algorithm.
+  from cryptography.hazmat.primitives.asymmetric.dh import DHParameterNumbers
+=================================================================
+  🛡️  BlackBox Sentinel — Autonomous Edge Defense Node (AEDN-NODE-01)
+=================================================================
+[HAL] Initializing Hardware Abstraction Layer in mode: [SIM]
+[HAL-SIM] [RELAY] Relay initialized in ENGAGED state (data line connected)
+[HAL-SIM] [TAMPER] Monitor active (Grid continuous)
+[HAL-SIM] [LED] Status LED initialized (OFF)
+[HAL-SIM] [CELLULAR] SIM800L Modem: Registered to SIMULATED-2G-GSM Network (RSSI: 24/31)
+[HAL-SIM] [MESH] ESP-NOW Radio: Node 'AEDN-NODE-01' listening on UDP loopback :39999
+/home/codespace/.local/lib/python3.14/site-packages/sklearn/base.py:525: InconsistentVersionWarning: Trying to unpickle estimator DecisionTreeClassifier from version 1.9.0 when using version 1.9.1. This might lead to breaking code or invalid results. Use at your own risk. For more info please refer to:
+https://scikit-learn.org/stable/model_persistence.html#security-maintainability-limitations
+  warnings.warn(
+/home/codespace/.local/lib/python3.14/site-packages/sklearn/base.py:525: InconsistentVersionWarning: Trying to unpickle estimator RandomForestClassifier from version 1.9.0 when using version 1.9.1. This might lead to breaking code or invalid results. Use at your own risk. For more info please refer to:
+https://scikit-learn.org/stable/model_persistence.html#security-maintainability-limitations
+  warnings.warn(
+[SCORER] Loaded v3 model (45 features) — threshold: 0.55
+[SCORER] Organization profile: default_organization — 0 accepted windows, ready=False
+[PIPELINE] Node ID:    AEDN-NODE-01
+[PIPELINE] Ledger:     /workspaces/Blackbox_Sentinel/m3-ml-ledger/data/sentinel_ledger.json
+[PIPELINE] Interface:  eth0
+[PIPELINE] HAL Mode:   SIM
+
+[HAL-SIM] [LED] [OFF] — System Calibrating / Idle
+[CALIBRATE] Learning organization default_organization for 172800s; local alerts remain disabled during warm-up
+[CAPTURE] Sniffing one-second v3 windows on inline bridge eth0...
+
+🚨 [ALERT] ANOMALY #1 DETECTED! v3 score: 0.7257 | global=ATTACK | local=LEARNING
+  Window: packets/sec=61.00, bytes/sec=41079.00, tcp_ratio=0.934
+  [M3 POLICY] status=PENDING_EVIDENCE | reason=insufficient independent authenticated fresh signals
+  [M4 TELEMETRY] normalized event prepared; physical relay verification remains pending M1 hardware
+[PIPELINE] No physical isolation requested: independent authenticated evidence and policy approval are still required.
+
+
+🚨 [ALERT] ANOMALY #2 DETECTED! v3 score: 0.5887 | global=ATTACK | local=LEARNING
+  Window: packets/sec=150.00, bytes/sec=227135.00, tcp_ratio=0.933
+  [M3 POLICY] status=PENDING_EVIDENCE | reason=insufficient independent authenticated fresh signals
+  [M4 TELEMETRY] normalized event prepared; physical relay verification remains pending M1 hardware
+[PIPELINE] No physical isolation requested: independent authenticated evidence and policy approval are still required.
+
+  [CALIBRATE] 14 accepted baseline windows | local detection enabled=False
+
+🚨 [ALERT] ANOMALY #3 DETECTED! v3 score: 0.7532 | global=ATTACK | local=LEARNING
+  Window: packets/sec=129.00, bytes/sec=74975.00, tcp_ratio=1.000
+  [M3 POLICY] status=PENDING_EVIDENCE | reason=insufficient independent authenticated fresh signals
+  [M4 TELEMETRY] normalized event prepared; physical relay verification remains pending M1 hardware
+[PIPELINE] No physical isolation requested: independent authenticated evidence and policy approval are still required.
+
+  [CALIBRATE] 18 accepted baseline windows | local detection enabled=False
+
+🚨 [ALERT] ANOMALY #4 DETECTED! v3 score: 0.7048 | global=ATTACK | local=LEARNING
+  Window: packets/sec=51.00, bytes/sec=36284.00, tcp_ratio=1.000
+  [M3 POLICY] status=PENDING_EVIDENCE | reason=insufficient independent authenticated fresh signals
+  [M4 TELEMETRY] normalized event prepared; physical relay verification remains pending M1 hardware
+[PIPELINE] No physical isolation requested: independent authenticated evidence and policy approval are still required.
+
+
+🚨 [ALERT] ANOMALY #5 DETECTED! v3 score: 0.5578 | global=ATTACK | local=LEARNING
+  Window: packets/sec=73.00, bytes/sec=41662.00, tcp_ratio=1.000
+  [M3 POLICY] status=PENDING_EVIDENCE | reason=insufficient independent authenticated fresh signals
+  [M4 TELEMETRY] normalized event prepared; physical relay verification remains pending M1 hardware
+[PIPELINE] No physical isolation requested: independent authenticated evidence and policy approval are still required.
+
+  [CALIBRATE] 51 accepted baseline windows | local detection enabled=False
+  [CALIBRATE] 66 accepted baseline windows | local detection enabled=False
+  [CALIBRATE] 83 accepted baseline windows | local detection enabled=False
+  [CALIBRATE] 108 accepted baseline windows | local detection enabled=False
+  [CALIBRATE] 157 accepted baseline windows | local detection enabled=False
+  [CALIBRATE] 204 accepted baseline windows | local detection enabled=False
+  [CALIBRATE] 218 accepted baseline windows | local detection enabled=False
