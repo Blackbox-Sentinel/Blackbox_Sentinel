@@ -17,9 +17,9 @@ except ImportError:
     Image = None
 
 try:
-    import google.generativeai as genai
+    import ollama
 except ImportError:
-    genai = None
+    ollama = None
 
 # Ensure we can import our M3 ledger and contracts
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -86,15 +86,12 @@ If the patch is DANGEROUS or BROKEN, output exactly the word "REJECTED" followed
         self.target_script = os.path.abspath(target_script)
         self.node_id = "AEDN-HEALER-01"
         
-        # Initialize Gemini API
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY environment variable is required.")
-        genai.configure(api_key=api_key)
+        # Initialize Ollama API
+        if ollama is None:
+            raise ValueError("ollama package is not installed. Run: pip install ollama")
         
-        # We use Gemini Pro or Flash. The user stated they have Gemini Pro.
-        self.model = genai.GenerativeModel('gemini-3.5-flash')
-        self.quorum_model = genai.GenerativeModel('gemini-3.5-flash') # Fast model for double-check
+        self.model_name = 'moondream'
+        self.quorum_model_name = 'moondream' # Using the same local model for quorum validation
         
         # Initialize Cryptography and Ledger
         self.ledger_path = os.path.join(PROJECT_ROOT, "m3-ml-ledger", "data", "healing_ledger.json")
@@ -166,11 +163,14 @@ If the patch is DANGEROUS or BROKEN, output exactly the word "REJECTED" followed
         """Quorum-Based Healing: The second LLM call verifies the first."""
         prompt = self.QUORUM_PROMPT + "\n\n### PROPOSED PATCH:\n```python\n" + patched_code + "\n```"
         try:
-            response = self.quorum_model.generate_content(prompt)
-            decision = response.text.strip().split("\n")[0]
+            response = ollama.chat(
+                model=self.quorum_model_name,
+                messages=[{'role': 'user', 'content': prompt}]
+            )
+            decision = response['message']['content'].strip().split("\n")[0]
             if decision.startswith("APPROVED"):
                 return True
-            print(f"[QUORUM] Rejected: {response.text}")
+            print(f"[QUORUM] Rejected: {response['message']['content']}")
             return False
         except Exception as e:
             print(f"[QUORUM] Error calling quorum model: {e}")
@@ -210,12 +210,24 @@ If the patch is DANGEROUS or BROKEN, output exactly the word "REJECTED" followed
                 
         # 3. Generate Patch
         try:
-            response = self.model.generate_content(prompt_parts)
+            messages = [{'role': 'system', 'content': self.SYSTEM_PROMPT}]
+            content = "\n### THERMAL DATA:\n" + thermal + "\n### SYSTEM LOGS:\n" + logs + "\n### TARGET SCRIPT SOURCE:\n```python\n" + source_code + "\n```"
+            
+            user_msg = {'role': 'user', 'content': content}
+            if fb_img_path and Image:
+                user_msg['images'] = [fb_img_path]
+                
+            messages.append(user_msg)
+            
+            response = ollama.chat(
+                model=self.model_name,
+                messages=messages
+            )
         except Exception as e:
-            print(f"[ORCHESTRATOR] Failed to call Gemini API: {e}")
+            print(f"[ORCHESTRATOR] Failed to call local Ollama model: {e}")
             return
             
-        text = response.text
+        text = response['message']['content']
         if "```python" not in text:
             print("[ORCHESTRATOR] Agent failed to return a python code block.")
             return
