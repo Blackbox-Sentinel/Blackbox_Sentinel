@@ -47,7 +47,7 @@ from quorum_state import VoteDecision
 LEDGER_PATH = os.path.join(ROOT, "m3-ml-ledger", "data", "sentinel_ledger.json")
 COUNTER_PATH = os.path.join(ROOT, "m3-ml-ledger", "data", "receipt_counter.txt")
 SCORE_LOG_PATH = os.path.join(ROOT, "m3-ml-ledger", "data", "scores.jsonl")
-TELEMETRY_PATH = os.path.join(ROOT, "m3-ml-ledger", "data", "phase2_telemetry_real_m2_m3.jsonl")
+TELEMETRY_PATH = os.path.join(ROOT, "m3-ml-ledger", "data", "phase2_telemetry_live.jsonl")
 KEYS_DIR = os.getenv(
     "SENTINEL_KEYS_DIR", os.path.join(ROOT, "m3-ml-ledger", "data", "keys")
 )
