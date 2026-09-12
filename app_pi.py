@@ -1,12 +1,6 @@
 """
 BlackBox Sentinel — M4 Interactive Tactical GUI & Defense Node Kiosk
 800x480 Real-time Autonomous Defense Dashboard for Touchscreen & Desktop.
-
-Features:
-- Live Pipeline Orchestration (Calibration -> Armed -> Attack Containment -> Lockdown)
-- Live Hardware Telemetry (Relay State, Status LED, GSM Modem, Anti-Tamper Grid)
-- Interactive Tactical Controls (Attack Injector, Tamper Simulator, PIN Override Pad)
-- Tamper-Evident SHA-256 Forensic Ledger Stream & Chain Auditor
 """
 
 import os
@@ -17,7 +11,7 @@ import threading
 import queue
 from collections import deque
 import tkinter as tk
-from tkinter import ttk, messagebox
+import customtkinter as ctk
 from datetime import datetime, timezone
 
 # Ensure stdout handles UTF-8 on Windows
@@ -49,27 +43,24 @@ from m3_security_contracts import ContainmentReceiptService, Ed25519ReceiptSigne
 from quorum_state import QuorumState
 import base64
 
-# ── Aesthetic Styling Constants ──
+# ── Ultra-Premium Styling Constants (480x320 Optimized) ──
 WINDOW_WIDTH = 480
 WINDOW_HEIGHT = 320
-COLOR_BG_DARK = "#090d16"
-COLOR_PANEL_BG = "#111827"
-COLOR_CARD_BG = "#1f293d"
-COLOR_ACCENT_CYAN = "#00f0ff"
-COLOR_ALERT_RED = "#ff2a5f"
-COLOR_SUCCESS_GREEN = "#00ff88"
-COLOR_WARNING_YELLOW = "#ffd000"
-COLOR_TEXT_MAIN = "#f1f5f9"
-COLOR_TEXT_MUTED = "#94a3b8"
-FONT_TITLE = ("Consolas", 10, "bold")
-FONT_HEADING = ("Consolas", 8, "bold")
-FONT_DATA = ("Consolas", 9, "bold")
-FONT_SMALL = ("Consolas", 7)
-FONT_LOG = ("Consolas", 7)
-CHART_BG = "#070a10"
-CHART_GRID = "#263449"
-CHART_PACKET = "#00f0ff"
-CHART_SCORE = "#ff2a5f"
+COLOR_BG_DARK = "#0B0F19"
+COLOR_PANEL_BG = "#131A2A"
+COLOR_CARD_BG = "#1C2538"
+COLOR_CARD_HOVER = "#25314A"
+COLOR_ACCENT_CYAN = "#00E5FF"
+COLOR_ALERT_RED = "#FF3366"
+COLOR_SUCCESS_GREEN = "#00E676"
+COLOR_WARNING_YELLOW = "#FFC400"
+COLOR_TEXT_MAIN = "#FFFFFF"
+COLOR_TEXT_MUTED = "#8A9BB3"
+
+CHART_BG = "#0D1322"
+CHART_GRID = "#263553"
+CHART_PACKET = "#00E5FF"
+CHART_SCORE = "#FF3366"
 
 
 class SentinelTacticalApp:
@@ -80,14 +71,14 @@ class SentinelTacticalApp:
             signal_id=f"sig-A-{self.packet_count}",
             source_id="m3-ml-anomaly-scorer",
             signal_type="ml_anomaly",
-            decision="CONFIRM" if score > 0.85 else "PENDING_EVIDENCE",
+            decision="CONFIRM" if score > 0.85 else "ABSTAIN",
             authenticated=True,
             fresh=True,
-            confidence=score
+            confidence=max(0.0, min(1.0, float(score)))
         )
         
         # Second independent heuristic signal based on packet inter-arrival rate
-        heuristic_decision = "PENDING_EVIDENCE"
+        heuristic_decision = "ABSTAIN"
         heuristic_conf = 0.5
         if pkt_label == "TAMPER_BREACH":
             heuristic_decision = "CONFIRM"
@@ -132,19 +123,22 @@ class SentinelTacticalApp:
             self.hal.led.blink(0.2)
             self.scorer.trigger_lockdown()
             self.append_log(f"🚨 [ANOMALY DETECTED] {pkt_label} (Score: {score:.4f})")
-            self.append_log(f"⚡ [RELAY] Controller-approved line CUT. Receipt Verified. Hash: {receipt['payload']['event_hash'][:16]}...")
+            self.append_log(f"⚡ [RELAY] Controller-approved line CUT. Hash: {receipt['payload']['event_hash'][:16]}...")
             self.hal.cellular.send_sms("+919876543210", f"ALERT: Line isolated on {self.node_id}")
             return True
         return False
 
     def __init__(self):
-        self.root = tk.Tk()
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("blue")
+        
+        self.root = ctk.CTk()
         self.ui_thread_id = threading.get_ident()
         self._ui_log_queue = queue.Queue()
         self._event_log = deque(maxlen=200)
-        self.root.title("🛡️ BLACKBOX SENTINEL — AUTONOMOUS EDGE DEFENSE NODE")
+        self.root.title("🛡️ BLACKBOX SENTINEL")
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
-        self.root.configure(bg=COLOR_BG_DARK)
+        self.root.configure(fg_color=COLOR_BG_DARK)
         self.root.resizable(False, False)
         self.root.attributes("-fullscreen", True)
         
@@ -154,6 +148,12 @@ class SentinelTacticalApp:
         pos_x = max(0, (screen_w - WINDOW_WIDTH) // 2)
         pos_y = max(0, (screen_h - WINDOW_HEIGHT) // 2)
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}+{pos_x}+{pos_y}")
+
+        self.font_title = ctk.CTkFont(family="Consolas", size=10, weight="bold")
+        self.font_heading = ctk.CTkFont(family="Consolas", size=9, weight="bold")
+        self.font_data = ctk.CTkFont(family="Consolas", size=11, weight="bold")
+        self.font_small = ctk.CTkFont(family="Consolas", size=8)
+        self.font_log = ctk.CTkFont(family="Consolas", size=8)
 
         # Core Components
         self.node_id = "AEDN-RACK-01"
@@ -208,71 +208,78 @@ class SentinelTacticalApp:
         self.root.after(100, self._update_telemetry_loop)
 
     def _build_header(self):
-        header = tk.Frame(self.root, bg=COLOR_PANEL_BG, height=40)
+        header = ctk.CTkFrame(self.root, fg_color=COLOR_PANEL_BG, height=35, corner_radius=0)
         header.pack(fill=tk.X)
         header.pack_propagate(False)
 
-        # Title / Node info
-        title_box = tk.Frame(header, bg=COLOR_PANEL_BG)
-        title_box.pack(side=tk.LEFT, padx=15, pady=6)
+        title_box = ctk.CTkFrame(header, fg_color="transparent")
+        title_box.pack(side=tk.LEFT, padx=10, pady=2)
         
-        lbl_title = tk.Label(title_box, text="🛡️ BLACKBOX SENTINEL", font=FONT_TITLE, fg=COLOR_ACCENT_CYAN, bg=COLOR_PANEL_BG)
-        lbl_title.pack(anchor="w")
-        lbl_sub = tk.Label(title_box, text=f"EDGE DEFENSE NODE: {self.node_id} | TRANSPARENT INLINE BRIDGE", font=FONT_SMALL, fg=COLOR_TEXT_MUTED, bg=COLOR_PANEL_BG)
-        lbl_sub.pack(anchor="w")
+        ctk.CTkLabel(title_box, text="🛡️ BLACKBOX SENTINEL", font=self.font_title, text_color=COLOR_ACCENT_CYAN).pack(anchor="w")
+        ctk.CTkLabel(title_box, text=f"NODE: {self.node_id} | TRANSPARENT BRIDGE", font=self.font_small, text_color=COLOR_TEXT_MUTED).pack(anchor="w")
 
-        # Live State Badge
-        self.lbl_state_badge = tk.Label(
+        self.lbl_state_badge = ctk.CTkLabel(
             header,
-            text="● INITIALIZING",
-            font=FONT_HEADING,
-            fg=COLOR_WARNING_YELLOW,
-            bg=COLOR_CARD_BG,
-            padx=12,
-            pady=2,
-            relief=tk.RIDGE
+            text="● INIT",
+            font=self.font_heading,
+            text_color=COLOR_WARNING_YELLOW,
+            fg_color=COLOR_CARD_BG,
+            corner_radius=4,
+            padx=8,
+            pady=2
         )
-        self.lbl_state_badge.pack(side=tk.RIGHT, padx=15, pady=10)
+        self.lbl_state_badge.pack(side=tk.RIGHT, padx=10, pady=5)
 
     def _build_main_body(self):
-        """Build a kiosk-style home screen with clickable feature applications."""
-        self.shell = tk.Frame(self.root, bg=COLOR_BG_DARK)
-        self.shell.pack(fill=tk.BOTH, expand=True, padx=8, pady=5)
+        self.shell = ctk.CTkFrame(self.root, fg_color=COLOR_BG_DARK, corner_radius=0)
+        self.shell.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
         self.shell.grid_rowconfigure(1, weight=1)
         self.shell.grid_columnconfigure(0, weight=1)
 
-        self.home_bar = tk.Frame(self.shell, bg=COLOR_PANEL_BG, height=28)
-        self.home_bar.grid(row=0, column=0, sticky="ew", pady=(0, 5))
+        self.home_bar = ctk.CTkFrame(self.shell, fg_color=COLOR_PANEL_BG, height=25, corner_radius=6)
+        self.home_bar.grid(row=0, column=0, sticky="ew", pady=(0, 4))
         self.home_bar.grid_propagate(False)
-        tk.Label(self.home_bar, text="HOME / APPLICATIONS", font=FONT_HEADING, fg=COLOR_ACCENT_CYAN, bg=COLOR_PANEL_BG).pack(side=tk.LEFT, padx=8)
-        self.view_title = tk.Label(self.home_bar, text="TACTICAL OVERVIEW", font=FONT_HEADING, fg=COLOR_TEXT_MAIN, bg=COLOR_PANEL_BG)
-        self.view_title.pack(side=tk.RIGHT, padx=8)
+        ctk.CTkLabel(self.home_bar, text="APPS", font=self.font_heading, text_color=COLOR_ACCENT_CYAN).pack(side=tk.LEFT, padx=10)
+        self.view_title = ctk.CTkLabel(self.home_bar, text="TACTICAL OVERVIEW", font=self.font_heading, text_color=COLOR_TEXT_MAIN)
+        self.view_title.pack(side=tk.RIGHT, padx=10)
 
-        self.content_host = tk.Frame(self.shell, bg=COLOR_BG_DARK)
+        self.content_host = ctk.CTkFrame(self.shell, fg_color="transparent")
         self.content_host.grid(row=1, column=0, sticky="nsew")
         self._build_home_view()
 
     def _build_home_view(self):
         self._clear_content()
-        self.view_title.config(text="TACTICAL OVERVIEW")
-        panel = tk.Frame(self.content_host, bg=COLOR_BG_DARK)
+        self.view_title.configure(text="TACTICAL OVERVIEW")
+        panel = ctk.CTkFrame(self.content_host, fg_color="transparent")
         panel.pack(fill=tk.BOTH, expand=True)
-        tk.Label(panel, text="BLACKBOX SENTINEL", font=("Consolas", 15, "bold"), fg=COLOR_ACCENT_CYAN, bg=COLOR_BG_DARK).pack(pady=(8, 1))
-        tk.Label(panel, text="Select a secure application", font=FONT_SMALL, fg=COLOR_TEXT_MUTED, bg=COLOR_BG_DARK).pack(pady=(0, 7))
-        grid = tk.Frame(panel, bg=COLOR_BG_DARK)
-        grid.pack(expand=True)
+        
+        # Grid layout for perfectly centered 2x2 buttons
+        grid = ctk.CTkFrame(panel, fg_color="transparent")
+        grid.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+        
         apps = [
-            ("◉", "ANOMALY\\nGRAPH", "graph", COLOR_ACCENT_CYAN),
-            ("⚠", "TAMPER\\nCONTROLS", "controls", COLOR_ALERT_RED),
-            ("▤", "SYSTEM\\nLOGS", "logs", COLOR_SUCCESS_GREEN),
-            ("▣", "SYSTEM\\nSTATUS", "status", COLOR_WARNING_YELLOW),
+            ("◉", "ANOMALY\nGRAPH", "graph", COLOR_ACCENT_CYAN),
+            ("⚠", "TAMPER\nCONTROLS", "controls", COLOR_ALERT_RED),
+            ("▤", "SYSTEM\nLOGS", "logs", COLOR_SUCCESS_GREEN),
+            ("▣", "SYSTEM\nSTATUS", "status", COLOR_WARNING_YELLOW),
         ]
+        
         for i, (icon, label, view, color) in enumerate(apps):
-            card = tk.Frame(grid, bg=COLOR_CARD_BG, width=130, height=82, bd=1, relief=tk.RIDGE)
-            card.grid(row=i // 2, column=i % 2, padx=7, pady=6)
-            card.grid_propagate(False)
-            button = tk.Button(card, text=f"{icon}\\n{label}", font=FONT_HEADING, fg=color, bg=COLOR_CARD_BG, activebackground=COLOR_PANEL_BG, activeforeground=COLOR_TEXT_MAIN, relief=tk.FLAT, bd=0, command=lambda v=view: self.show_view(v))
-            button.pack(fill=tk.BOTH, expand=True)
+            btn = ctk.CTkButton(
+                grid, 
+                text=f"{icon}\n{label}", 
+                font=self.font_heading, 
+                text_color=color, 
+                fg_color=COLOR_CARD_BG,
+                hover_color=COLOR_CARD_HOVER,
+                border_width=1,
+                border_color=COLOR_PANEL_BG,
+                corner_radius=10,
+                width=160,
+                height=75,
+                command=lambda v=view: self.show_view(v)
+            )
+            btn.grid(row=i // 2, column=i % 2, padx=8, pady=8)
 
     def _clear_content(self):
         for child in self.content_host.winfo_children():
@@ -283,59 +290,71 @@ class SentinelTacticalApp:
             self._build_home_view()
             return
         self._clear_content()
-        back = tk.Button(self.home_bar, text="‹ HOME", font=FONT_SMALL, fg=COLOR_ACCENT_CYAN, bg=COLOR_PANEL_BG, activebackground=COLOR_CARD_BG, relief=tk.FLAT, command=self._build_home_view)
-        back.pack(side=tk.LEFT, padx=4)
+        back = ctk.CTkButton(self.home_bar, text="‹ HOME", font=self.font_small, text_color=COLOR_TEXT_MAIN, fg_color=COLOR_CARD_BG, hover_color=COLOR_CARD_HOVER, width=50, height=20, corner_radius=4, command=self._build_home_view)
+        back.pack(side=tk.LEFT, padx=6)
+        
         if view == "graph":
-            self.view_title.config(text="ANOMALY GRAPH")
+            self.view_title.configure(text="ANOMALY GRAPH")
             self._build_graph_view()
         elif view == "controls":
-            self.view_title.config(text="TAMPER CONTROLS")
+            self.view_title.configure(text="TAMPER CONTROLS")
             self._build_controls_view()
         elif view == "logs":
-            self.view_title.config(text="SYSTEM LOGS")
+            self.view_title.configure(text="SYSTEM LOGS")
             self._build_logs_view()
         else:
-            self.view_title.config(text="SYSTEM STATUS")
+            self.view_title.configure(text="SYSTEM STATUS")
             self._build_status_view()
 
     def _build_graph_view(self):
-        tk.Label(self.content_host, text="LIVE PACKET RATE / ANOMALY SCORE", font=FONT_HEADING, fg=COLOR_ACCENT_CYAN, bg=COLOR_BG_DARK).pack(anchor="w", padx=8, pady=5)
-        self.telemetry_canvas = tk.Canvas(self.content_host, bg=CHART_BG, height=150, highlightthickness=1, highlightbackground=CHART_GRID)
-        self.telemetry_canvas.pack(fill=tk.BOTH, expand=True, padx=8, pady=5)
+        ctk.CTkLabel(self.content_host, text="LIVE PACKET RATE / ANOMALY SCORE", font=self.font_heading, text_color=COLOR_ACCENT_CYAN).pack(anchor="w", padx=4, pady=2)
+        canvas_frame = ctk.CTkFrame(self.content_host, fg_color=CHART_BG, corner_radius=8, border_width=1, border_color=CHART_GRID)
+        canvas_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=2)
+        self.telemetry_canvas = tk.Canvas(canvas_frame, bg=CHART_BG, highlightthickness=0)
+        self.telemetry_canvas.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         self._draw_telemetry_graph()
 
     def _build_controls_view(self):
-        panel = tk.Frame(self.content_host, bg=COLOR_BG_DARK)
-        panel.pack(fill=tk.BOTH, expand=True, padx=10, pady=8)
-        tk.Label(panel, text="AUTHORIZED TACTICAL ACTIONS", font=FONT_HEADING, fg=COLOR_ACCENT_CYAN, bg=COLOR_BG_DARK).pack(pady=5)
-        for text, color, command in (("⚡ INJECT C2 ATTACK", "#b91c1c", lambda: self.inject_attack("EXFILTRATION")), ("💥 SYN FLOOD", "#7c2d12", lambda: self.inject_attack("SYN_FLOOD")), ("🚨 BREACH CASING", "#4c0519", self.hal.tamper.simulate_tamper), ("🔢 PIN OVERRIDE", "#065f46", self._popup_pin_pad)):
-            tk.Button(panel, text=text, font=FONT_HEADING, fg="#ffffff", bg=color, activebackground=COLOR_CARD_BG, relief=tk.GROOVE, command=command).pack(fill=tk.X, pady=4)
+        panel = ctk.CTkFrame(self.content_host, fg_color="transparent")
+        panel.pack(fill=tk.BOTH, expand=True, padx=10, pady=2)
+        ctk.CTkLabel(panel, text="AUTHORIZED TACTICAL ACTIONS", font=self.font_heading, text_color=COLOR_ACCENT_CYAN).pack(pady=2)
+        
+        actions = [
+            ("⚡ INJECT C2 ATTACK", "#991b1b", "#7f1d1d", lambda: self.inject_attack("EXFILTRATION")), 
+            ("💥 SYN FLOOD", "#9a3412", "#7c2d12", lambda: self.inject_attack("SYN_FLOOD")), 
+            ("🚨 BREACH CASING", "#831843", "#4c0519", self.hal.tamper.simulate_tamper), 
+            ("🔢 PIN OVERRIDE", "#065f46", "#064e3b", self._popup_pin_pad)
+        ]
+        
+        for text, color, hover, command in actions:
+            ctk.CTkButton(panel, text=text, font=self.font_heading, text_color="#ffffff", fg_color=color, hover_color=hover, corner_radius=6, height=34, command=command).pack(fill=tk.X, pady=4)
 
     def _build_logs_view(self):
-        self.log_text = tk.Text(self.content_host, bg=CHART_BG, fg=COLOR_TEXT_MAIN, font=FONT_LOG, relief=tk.FLAT, wrap=tk.WORD)
-        self.log_text.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        self.log_text = ctk.CTkTextbox(self.content_host, fg_color=CHART_BG, text_color=COLOR_TEXT_MAIN, font=self.font_log, wrap="word", corner_radius=8, border_width=1, border_color=CHART_GRID)
+        self.log_text.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
         for item in self._event_log:
             self.log_text.insert(tk.END, item + "\n")
         self.log_text.see(tk.END)
 
     def _build_status_view(self):
-        panel = tk.Frame(self.content_host, bg=COLOR_BG_DARK)
-        panel.pack(fill=tk.BOTH, expand=True, padx=12, pady=8)
+        panel = ctk.CTkFrame(self.content_host, fg_color="transparent")
+        panel.pack(fill=tk.BOTH, expand=True, padx=10, pady=6)
         self.lbl_pkts = self._make_stat_box(panel, "PACKETS INLINE", "0", COLOR_ACCENT_CYAN, 0, 0)
         self.lbl_anomalies = self._make_stat_box(panel, "ANOMALIES", "0", COLOR_ALERT_RED, 0, 1)
         self.lbl_blocks = self._make_stat_box(panel, "LEDGER BLOCKS", "1", COLOR_SUCCESS_GREEN, 1, 0)
         self.lbl_uptime = self._make_stat_box(panel, "UPTIME", "00:00:00", COLOR_TEXT_MAIN, 1, 1)
-        tk.Label(panel, text="UART: /dev/ttyAMA5  |  RECEIPT: Ed25519 / 12 fields", font=FONT_SMALL, fg=COLOR_SUCCESS_GREEN, bg=COLOR_BG_DARK).grid(row=2, column=0, columnspan=2, pady=12)
+        ctk.CTkLabel(panel, text="UART: /dev/ttyAMA5 | RECEIPT: Ed25519", font=self.font_small, text_color=COLOR_SUCCESS_GREEN).grid(row=2, column=0, columnspan=2, pady=10)
         for col in (0, 1):
             panel.grid_columnconfigure(col, weight=1)
 
     def _make_stat_box(self, parent, title, val, color, row, col):
-        card = tk.Frame(parent, bg=COLOR_CARD_BG, padx=8, pady=7)
-        card.grid(row=row, column=col, padx=5, pady=5, sticky="nsew")
+        card = ctk.CTkFrame(parent, fg_color=COLOR_CARD_BG, corner_radius=8)
+        card.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
         parent.grid_columnconfigure(col, weight=1)
-        tk.Label(card, text=title, font=FONT_SMALL, fg=COLOR_TEXT_MUTED, bg=COLOR_CARD_BG).pack(anchor="w")
-        val_lbl = tk.Label(card, text=val, font=FONT_DATA, fg=color, bg=COLOR_CARD_BG)
-        val_lbl.pack(anchor="w")
+        
+        ctk.CTkLabel(card, text=title, font=self.font_small, text_color=COLOR_TEXT_MUTED).pack(anchor="w", padx=10, pady=(6, 0))
+        val_lbl = ctk.CTkLabel(card, text=val, font=self.font_data, text_color=color)
+        val_lbl.pack(anchor="w", padx=10, pady=(0, 6))
         return val_lbl
 
     def _draw_telemetry_graph(self):
@@ -346,45 +365,33 @@ class SentinelTacticalApp:
         height = max(1, canvas.winfo_height() or 150)
         canvas.delete("all")
         canvas.create_line(0, height // 2, width, height // 2, fill=CHART_GRID)
-        canvas.create_text(8, 8, anchor="nw", text="PACKET RATE", fill=CHART_PACKET, font=FONT_SMALL)
-        canvas.create_text(width - 8, 8, anchor="ne", text="ANOMALY SCORE", fill=CHART_SCORE, font=FONT_SMALL)
+        canvas.create_text(6, 6, anchor="nw", text="PACKET RATE", fill=CHART_PACKET, font=("Consolas", 8))
+        canvas.create_text(width - 6, 6, anchor="ne", text="ANOMALY SCORE", fill=CHART_SCORE, font=("Consolas", 8))
         def series(values, color, scale):
             if len(values) < 2:
                 return
             points = []
             for i, value in enumerate(values):
-                x = 8 + i * (width - 16) / max(1, len(values) - 1)
-                y = height - 10 - min(1.0, max(0.0, value / scale)) * (height - 28)
+                x = 6 + i * (width - 12) / max(1, len(values) - 1)
+                y = height - 8 - min(1.0, max(0.0, value / scale)) * (height - 24)
                 points.extend((x, y))
             canvas.create_line(*points, fill=color, width=2, smooth=True)
         series(list(self.packet_rate_history), CHART_PACKET, 20.0)
         series(list(self.anomaly_score_history), CHART_SCORE, 1.0)
 
-    def _make_stat_box(self, parent, title, val, color, row, col):
-        card = tk.Frame(parent, bg=COLOR_CARD_BG, padx=3, pady=2)
-        card.grid(row=row, column=col, padx=4, pady=2, sticky="nsew")
-        parent.grid_columnconfigure(col, weight=1)
-
-        tk.Label(card, text=title, font=("Consolas", 8), fg=COLOR_TEXT_MUTED, bg=COLOR_CARD_BG).pack(anchor="w")
-        val_lbl = tk.Label(card, text=val, font=FONT_DATA, fg=color, bg=COLOR_CARD_BG)
-        val_lbl.pack(anchor="w")
-        return val_lbl
-
     def _build_footer(self):
-        footer = tk.Frame(self.root, bg=COLOR_PANEL_BG, height=18)
+        footer = ctk.CTkFrame(self.root, fg_color=COLOR_PANEL_BG, height=20, corner_radius=0)
         footer.pack(fill=tk.X, side=tk.BOTTOM)
         footer.pack_propagate(False)
 
-        tk.Label(
+        ctk.CTkLabel(
             footer,
-            text=f"BlackBox Sentinel OS v2.1 | SHA-256 Ledger Integrity: VERIFIED | Hardware: SIMULATION",
-            font=("Consolas", 8),
-            fg=COLOR_TEXT_MUTED,
-            bg=COLOR_PANEL_BG
-        ).pack(side=tk.LEFT, padx=10)
+            text=f"BlackBox Sentinel v2.2 | SHA-256 Ledger: VERIFIED | Hardware: SIMULATION",
+            font=self.font_small,
+            text_color=COLOR_TEXT_MUTED
+        ).pack(side=tk.LEFT, padx=10, pady=2)
 
     def _append_log_main(self, msg: str):
-        """Store events and render them only when the logs app is visible."""
         t_str = datetime.now().strftime("%H:%M:%S")
         rendered = f"[{t_str}] {msg}"
         self._event_log.append(rendered)
@@ -394,7 +401,6 @@ class SentinelTacticalApp:
             log_text.see(tk.END)
 
     def append_log(self, msg: str):
-        """Queue worker messages and render them safely in the GUI thread."""
         if threading.get_ident() == self.ui_thread_id:
             self._append_log_main(msg)
         else:
@@ -403,32 +409,30 @@ class SentinelTacticalApp:
     def inject_attack(self, attack_type: str):
         self.injected_attack_type = attack_type
         self.append_log(f"⚡ [SIMULATOR] Scheduled adversarial injection: {attack_type}")
-        # Attack will be picked up by _pipeline_worker which will generate the packet
-        # and invoke the dual-signal containment logic properly.
 
     def _popup_pin_pad(self):
         if hasattr(self, 'pin_frame') and self.pin_frame.winfo_exists():
             self.pin_frame.destroy()
             
-        win = tk.Frame(self.root, bg=COLOR_PANEL_BG, bd=2, relief=tk.RAISED)
-        win.place(relx=0.5, rely=0.5, anchor=tk.CENTER, width=260, height=300)
+        win = ctk.CTkFrame(self.root, fg_color=COLOR_PANEL_BG, corner_radius=12, border_width=1, border_color=COLOR_CARD_BG)
+        win.place(relx=0.5, rely=0.5, anchor=tk.CENTER, width=260, height=240)
         self.pin_frame = win
         
-        tk.Label(win, text="ENTER SECURITY PIN", font=FONT_HEADING, fg=COLOR_ACCENT_CYAN, bg=COLOR_PANEL_BG).pack(pady=8)
+        ctk.CTkLabel(win, text="ENTER SECURITY PIN", font=self.font_heading, text_color=COLOR_ACCENT_CYAN).pack(pady=6)
         
-        pin_disp = tk.Label(win, text="____", font=("Consolas", 14, "bold"), fg=COLOR_TEXT_MAIN, bg="#000000", width=8)
-        pin_disp.pack(pady=5)
+        pin_disp = ctk.CTkLabel(win, text="____", font=ctk.CTkFont(family="Consolas", size=16, weight="bold"), text_color=COLOR_TEXT_MAIN, fg_color="#000", corner_radius=6, width=100, height=24)
+        pin_disp.pack(pady=4)
 
         pin_str = []
 
         def press_num(n):
             if len(pin_str) < 4:
                 pin_str.append(str(n))
-                pin_disp.config(text="* " * len(pin_str) + "_ " * (4 - len(pin_str)))
+                pin_disp.configure(text="* " * len(pin_str) + "_ " * (4 - len(pin_str)))
 
         def clear():
             pin_str.clear()
-            pin_disp.config(text="____")
+            pin_disp.configure(text="____")
             
         def close_pad():
             win.destroy()
@@ -445,11 +449,11 @@ class SentinelTacticalApp:
                 win.destroy()
             else:
                 pin_str.clear()
-                pin_disp.config(text="REJECT", fg="red")
-                win.after(1000, lambda: pin_disp.config(text="____", fg=COLOR_TEXT_MAIN))
+                pin_disp.configure(text="REJECT", text_color="red")
+                win.after(1000, lambda: pin_disp.configure(text="____", text_color=COLOR_TEXT_MAIN))
 
-        pad_frame = tk.Frame(win, bg=COLOR_PANEL_BG)
-        pad_frame.pack(pady=5)
+        pad_frame = ctk.CTkFrame(win, fg_color="transparent")
+        pad_frame.pack(pady=4)
 
         keys = [
             ("1", 0, 0), ("2", 0, 1), ("3", 0, 2),
@@ -461,23 +465,22 @@ class SentinelTacticalApp:
         for text, r, c in keys:
             if text == "CLR":
                 cmd = clear
-                btn_color = COLOR_ALERT_RED
+                btn_color = "#991b1b"
             elif text == "OK":
                 cmd = submit
-                btn_color = COLOR_SUCCESS_GREEN
+                btn_color = "#065f46"
             else:
                 cmd = lambda n=text: press_num(n)
                 btn_color = COLOR_CARD_BG
 
-            btn = tk.Button(pad_frame, text=text, font=FONT_HEADING, width=4, height=1, bg=btn_color, fg="#ffffff", command=cmd)
+            btn = ctk.CTkButton(pad_frame, text=text, font=self.font_heading, width=45, height=28, fg_color=btn_color, hover_color=COLOR_CARD_HOVER, corner_radius=6, command=cmd)
             btn.grid(row=r, column=c, padx=3, pady=3)
             
-        close_btn = tk.Button(win, text="CANCEL", font=FONT_SMALL, bg="#444", fg="#fff", command=close_pad)
-        close_btn.pack(pady=5)
+        close_btn = ctk.CTkButton(win, text="CANCEL", font=self.font_small, fg_color="#334155", hover_color="#475569", corner_radius=4, width=70, height=22, command=close_pad)
+        close_btn.pack(pady=4)
 
     def _handle_tamper_event(self):
         self.append_log("🚨 [TAMPER ALERT] Casing breached! Zeroizing volatile keys...")
-        # Wipe in-memory AES key
         self.master_aes_key = b"\x00" * 32
         incident_id = f"{self.node_id}:tamper:{int(time.time())}"
         self._apply_containment_logic(incident_id, 1.0, "TAMPER_BREACH")
@@ -488,11 +491,8 @@ class SentinelTacticalApp:
         pass
 
     def _pipeline_worker(self):
-        """Continuous packet processing engine."""
         self.append_log("System booting... starting 120-packet baseline calibration")
         self.scorer.start_calibration()
-
-        # Step 1: Calibration
         for i in range(120):
             if not self.is_running:
                 return
@@ -509,7 +509,6 @@ class SentinelTacticalApp:
         self.append_log("✅ Baseline training complete. Trusted controller ARMED & DEFENDING.")
         self.hal.led.solid_on()
 
-        # Step 2: Continuous monitoring
         while self.is_running:
             if self.injected_attack_type:
                 pkt = self.traffic_gen.generate_attack_packet(self.injected_attack_type)
@@ -521,7 +520,6 @@ class SentinelTacticalApp:
             res = self.scorer.ingest_features(pkt)
             self.latest_anomaly_score = float(res.get("score", 0.0) or 0.0)
 
-            # Anomaly trigger
             if res.get("is_anomaly", False):
                 self.anomaly_count += 1
                 score = res.get("score", 0.0)
@@ -531,7 +529,6 @@ class SentinelTacticalApp:
             time.sleep(0.08)
 
     def _update_telemetry_loop(self):
-        """Update UI elements at 10Hz."""
         while True:
             try:
                 self._append_log_main(self._ui_log_queue.get_nowait())
@@ -547,50 +544,26 @@ class SentinelTacticalApp:
         self.anomaly_score_history.append(min(max(self.latest_anomaly_score, 0.0), 1.0))
         self._draw_telemetry_graph()
 
-        # Update metrics
         if hasattr(self, "lbl_pkts"):
-            self.lbl_pkts.config(text=str(self.packet_count))
+            self.lbl_pkts.configure(text=str(self.packet_count))
         if hasattr(self, "lbl_anomalies"):
-            self.lbl_anomalies.config(text=str(self.anomaly_count))
+            self.lbl_anomalies.configure(text=str(self.anomaly_count))
         if hasattr(self, "lbl_blocks"):
-            self.lbl_blocks.config(text=str(len(self.ledger.chain)))
+            self.lbl_blocks.configure(text=str(len(self.ledger.chain)))
 
         elapsed = int(time.time() - self.start_time)
         hrs, rem = divmod(elapsed, 3600)
         mins, secs = divmod(rem, 60)
         if hasattr(self, "lbl_uptime"):
-            self.lbl_uptime.config(text=f"{hrs:02d}:{mins:02d}:{secs:02d}")
+            self.lbl_uptime.configure(text=f"{hrs:02d}:{mins:02d}:{secs:02d}")
 
-        # Update State Badge
         state = self.scorer.state.value.upper()
         if state == "CALIBRATING":
-            self.lbl_state_badge.config(text="● CALIBRATING (AI BASELINE)", fg=COLOR_WARNING_YELLOW)
+            self.lbl_state_badge.configure(text="● CALIBRATING", text_color=COLOR_WARNING_YELLOW)
         elif state == "ARMED":
-            self.lbl_state_badge.config(text="● ARMED & MONITORING", fg=COLOR_SUCCESS_GREEN)
+            self.lbl_state_badge.configure(text="● ARMED & MONITORING", text_color=COLOR_SUCCESS_GREEN)
         elif state in ("ALERT", "LOCKDOWN"):
-            self.lbl_state_badge.config(text="🚨 AIR-GAP LOCKDOWN (LINE CUT)", fg=COLOR_ALERT_RED)
-
-        # Update hardware/controller status when the optional status view is open.
-        relay_state = self.hal.relay.get_state()
-        if hasattr(self, "lbl_relay_stat"):
-            relay_text = "⚡ Relay: ISOLATED (Line Severed)" if relay_state == "ISOLATED" else "⚡ Relay: ENGAGED (Line Connected)"
-            self.lbl_relay_stat.config(text=relay_text, fg=COLOR_ALERT_RED if relay_state == "ISOLATED" else COLOR_SUCCESS_GREEN)
-        if hasattr(self, "lbl_tamper_stat") and self.hal.tamper.is_tampered():
-            self.lbl_tamper_stat.config(text="🚨 Anti-Tamper: CASING BREACHED!", fg=COLOR_ALERT_RED)
-
-        controller_state = "ISOLATED" if getattr(self.controller, "relay_state", "") == "ISOLATED" else "ARMED"
-        if controller_state == "ISOLATED" and hasattr(self, "lbl_controller_stat"):
-            self.lbl_controller_stat.config(text="🧠 Controller: ISOLATED | Link: HEALTHY", fg=COLOR_ALERT_RED)
-            if hasattr(self, "lbl_signal_stat"):
-                self.lbl_signal_stat.config(text="🔐 Signals: 2/2 independent evidence", fg=COLOR_ALERT_RED)
-            if hasattr(self, "lbl_receipt_stat"):
-                self.lbl_receipt_stat.config(text=f"🧾 Receipt: VALID | Quorum: APPROVED", fg=COLOR_SUCCESS_GREEN)
-        elif controller_state == "ARMED" and hasattr(self, "lbl_controller_stat"):
-            self.lbl_controller_stat.config(text="🧠 Controller: ARMED | Link: HEALTHY", fg=COLOR_SUCCESS_GREEN)
-            if hasattr(self, "lbl_signal_stat"):
-                self.lbl_signal_stat.config(text="🔐 Signals: waiting for independent evidence", fg=COLOR_TEXT_MUTED)
-            if hasattr(self, "lbl_receipt_stat"):
-                self.lbl_receipt_stat.config(text="🧾 Receipt: N/A | Quorum: NOT CONFIGURED", fg=COLOR_TEXT_MUTED)
+            self.lbl_state_badge.configure(text="🚨 LOCKDOWN (LINE CUT)", text_color=COLOR_ALERT_RED)
 
         if self.is_running:
             self.root.after(100, self._update_telemetry_loop)
@@ -602,7 +575,6 @@ class SentinelTacticalApp:
     def on_close(self):
         self.is_running = False
         self.root.destroy()
-
 
 if __name__ == "__main__":
     app = SentinelTacticalApp()

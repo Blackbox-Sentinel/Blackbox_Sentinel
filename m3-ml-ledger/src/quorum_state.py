@@ -25,6 +25,8 @@ from typing import Any, Iterable, Mapping
 
 class QuorumState(str, Enum):
     COLLECTING = "COLLECTING"
+    # Note (M2/M3 sync): In the current phase, 'APPROVED' relies on fixed peer names 
+    # without real network voting, consistent with the M3 NOT PURSUED decision for full distributed consensus.
     APPROVED = "APPROVED"
     DENIED = "DENIED"
     CONFLICT = "CONFLICT"

@@ -1,0 +1,17 @@
+[
+  {
+    "index": 0,
+    "timestamp": "2026-09-11T15:20:02.178196+00:00",
+    "previous_hash": "06c5c294b386e58f4554333ae6b925e16118cba53b932249cd881dd90a0aff2f",
+    "event_type": "self_healing_patch",
+    "data": {
+      "organization_id": "openclaw-sentinel",
+      "incident_id": "AEDN-HEALER-01:heal:1789140002",
+      "target_file": "broken_script.py",
+      "quorum_status": "APPROVED",
+      "controller_id": "AEDN-HEALER-01"
+    },
+    "anomaly_score": null,
+    "hash": "1040cc3c62dded9f935a460b13d6b7117c182588578ffea744c0f0f3a4351965"
+  }
+]

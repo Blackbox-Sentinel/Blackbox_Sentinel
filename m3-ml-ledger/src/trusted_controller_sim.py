@@ -58,6 +58,10 @@ class SimTrustedController:
         self.last_incident_id: str | None = None
         self.last_rejection: str | None = None
 
+    def arm(self) -> None:
+        """Arm the trusted controller."""
+        self.relay_state = "ARMED"
+
     def direct_isolate(self) -> bool:
         """Reject Pi-side direct relay control in the simulation."""
         self.last_rejection = "direct_relay_control_rejected"

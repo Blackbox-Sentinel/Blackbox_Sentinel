@@ -43,7 +43,8 @@ String EMERGENCY_PHONE = "+919914551405";
 
 // Hardware Defense Pins
 #define LIMIT_SWITCH_PIN 14
-#define RELAY_PIN 4
+#define RELAY1_PIN 4  // Channel 1 of the new 2-Channel Relay
+#define RELAY2_PIN 5  // Channel 2 of the new 2-Channel Relay
 #define PRG_BUTTON_PIN 0 // Built-in "PRG" button on Heltec ESP32 V3
 
 // OLED I2C Pins
@@ -75,7 +76,8 @@ void setup() {
   // To safely turn OFF a 5V Active-Low relay with a 3.3V ESP32, 
   // we must float the pin (INPUT) instead of driving it HIGH (3.3V), 
   // because 3.3V is not high enough to turn the 5V relay off!
-  pinMode(RELAY_PIN, INPUT); // Floating = Relay OFF (Network Flowing)
+  pinMode(RELAY1_PIN, INPUT); // Floating = Relay 1 OFF (Network Flowing)
+  pinMode(RELAY2_PIN, INPUT); // Floating = Relay 2 OFF
 
   // Load saved phone number from flash memory
   preferences.begin("sentinel", false);
@@ -118,8 +120,11 @@ void triggerIsolate(String reason) {
   
   // 1. Physically cut the network relay!
   // To turn it ON, we drive it to GROUND (0V)
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW); 
+  pinMode(RELAY1_PIN, OUTPUT);
+  digitalWrite(RELAY1_PIN, LOW); 
+  
+  pinMode(RELAY2_PIN, OUTPUT);
+  digitalWrite(RELAY2_PIN, LOW); 
   
   // 2. Update screen
   updateOLED("!! ISOLATED !!", reason);
@@ -313,7 +318,8 @@ void loop() {
   if (digitalRead(PRG_BUTTON_PIN) == LOW) {
       if (isAirGapped) {
           isAirGapped = false;
-          pinMode(RELAY_PIN, INPUT); // Restore network relay (Float = OFF)
+          pinMode(RELAY1_PIN, INPUT); // Restore network relay (Float = OFF)
+          pinMode(RELAY2_PIN, INPUT); // Restore second relay (Float = OFF)
           
           updateOLED("SYSTEM DISARMED", "Relay Restored");
           Serial.println("⚠️ SYSTEM DISARMED LOCALLY. RELAY RESTORED.");

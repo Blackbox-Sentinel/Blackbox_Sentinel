@@ -1,0 +1,135 @@
+[
+  {
+    "index": 0,
+    "timestamp": "2026-09-11T10:49:44.150721+00:00",
+    "previous_hash": "06c5c294b386e58f4554333ae6b925e16118cba53b932249cd881dd90a0aff2f",
+    "event_type": "containment_decision",
+    "data": {
+      "organization_id": "openclaw-sentinel",
+      "incident_id": "test:direct:1789123784",
+      "evidence_digest": "0a42d240ac49822e7d80c57c296b1680a01825de03dce3351d23106e3a1e399f",
+      "accepted_signal_ids": [
+        "sig-A-0",
+        "sig-B-0"
+      ],
+      "quorum": {
+        "state": "APPROVED",
+        "peers": [
+          "N/A"
+        ]
+      },
+      "controller_id": "AEDN-TEST"
+    },
+    "anomaly_score": null,
+    "hash": "6e4fe55c69563eb479afb78b57b4f00ef688e9ce9407ea16d4c0dcf53a35523c"
+  },
+  {
+    "index": 1,
+    "timestamp": "2026-09-11T10:49:44.150721+00:00",
+    "previous_hash": "6e4fe55c69563eb479afb78b57b4f00ef688e9ce9407ea16d4c0dcf53a35523c",
+    "event_type": "containment_receipt",
+    "data": {
+      "organization_id": "openclaw-sentinel",
+      "incident_id": "test:direct:1789123784",
+      "receipt_sequence": 1,
+      "event_hash": "6e4fe55c69563eb479afb78b57b4f00ef688e9ce9407ea16d4c0dcf53a35523c",
+      "receipt_signature": "TtepB8_c0bv1EJ32jNk9kPE0r4WBVuMsOCjKAyCl6f8QQ4RMUt-SUnwS4B26E6cfigy7BMLf-pzXBdTxbbxbAg",
+      "algorithm": "Ed25519"
+    },
+    "anomaly_score": null,
+    "hash": "43788aeaba39437f919f86b4687b763aa3ebc57655b615be4af165793b786437"
+  },
+  {
+    "index": 2,
+    "timestamp": "2026-09-11T10:49:44.162865+00:00",
+    "previous_hash": "43788aeaba39437f919f86b4687b763aa3ebc57655b615be4af165793b786437",
+    "event_type": "containment_decision",
+    "data": {
+      "organization_id": "openclaw-sentinel",
+      "incident_id": "AEDN-TEST:tamper:1789123784",
+      "evidence_digest": "c3d5e32b2ed24f2f5cd00be2e0f91fb389e7234921fdf723e1be79ec4f25eb77",
+      "accepted_signal_ids": [
+        "sig-A-0",
+        "sig-B-0"
+      ],
+      "quorum": {
+        "state": "APPROVED",
+        "peers": [
+          "N/A"
+        ]
+      },
+      "controller_id": "AEDN-TEST"
+    },
+    "anomaly_score": null,
+    "hash": "2374b94d694123cb74c6e6472a87ec5dc79d14e174290be69f852e81e44aed67"
+  },
+  {
+    "index": 3,
+    "timestamp": "2026-09-11T10:49:44.162865+00:00",
+    "previous_hash": "2374b94d694123cb74c6e6472a87ec5dc79d14e174290be69f852e81e44aed67",
+    "event_type": "containment_receipt",
+    "data": {
+      "organization_id": "openclaw-sentinel",
+      "incident_id": "AEDN-TEST:tamper:1789123784",
+      "receipt_sequence": 2,
+      "event_hash": "2374b94d694123cb74c6e6472a87ec5dc79d14e174290be69f852e81e44aed67",
+      "receipt_signature": "dgVt3QJVfzTkHQXXqRBx4dBnDy3bAHJq4oTR6X3sj4DZmNEgTae0e4B5bTn_CKjlcI1rMuqOttE82SsXLZFDCg",
+      "algorithm": "Ed25519"
+    },
+    "anomaly_score": null,
+    "hash": "6cf5d68ae3da9c51165c17808c5df35cab87c38266c28abb936ee04e817c88a8"
+  },
+  {
+    "index": 4,
+    "timestamp": "2026-09-11T10:49:44.162865+00:00",
+    "previous_hash": "6cf5d68ae3da9c51165c17808c5df35cab87c38266c28abb936ee04e817c88a8",
+    "event_type": "tamper_breach",
+    "data": {
+      "action": "KEYS_ZEROIZED",
+      "relay": "ISOLATED",
+      "controller_state": "TAMPERED"
+    },
+    "anomaly_score": null,
+    "hash": "ebbb8d703ae6366201f57022cdbdcbcd69a5920bc7e47bdb0583e954aba348fa"
+  },
+  {
+    "index": 5,
+    "timestamp": "2026-09-11T10:49:44.174067+00:00",
+    "previous_hash": "ebbb8d703ae6366201f57022cdbdcbcd69a5920bc7e47bdb0583e954aba348fa",
+    "event_type": "containment_decision",
+    "data": {
+      "organization_id": "openclaw-sentinel",
+      "incident_id": "AEDN-TEST:1789123784",
+      "evidence_digest": "86265811b7c3ceb573732119324a0ad016de98b523b3507e12d31c2e91ee5548",
+      "accepted_signal_ids": [
+        "sig-A-0",
+        "sig-B-0"
+      ],
+      "quorum": {
+        "state": "APPROVED",
+        "peers": [
+          "N/A"
+        ]
+      },
+      "controller_id": "AEDN-TEST"
+    },
+    "anomaly_score": null,
+    "hash": "64f7388a51cc62faed4d8ecf49bfbf04f2f56d5124535eb0eac40d0843e268e8"
+  },
+  {
+    "index": 6,
+    "timestamp": "2026-09-11T10:49:44.174067+00:00",
+    "previous_hash": "64f7388a51cc62faed4d8ecf49bfbf04f2f56d5124535eb0eac40d0843e268e8",
+    "event_type": "containment_receipt",
+    "data": {
+      "organization_id": "openclaw-sentinel",
+      "incident_id": "AEDN-TEST:1789123784",
+      "receipt_sequence": 3,
+      "event_hash": "64f7388a51cc62faed4d8ecf49bfbf04f2f56d5124535eb0eac40d0843e268e8",
+      "receipt_signature": "7ETcXir5n4zWAROJ-IWMwd-yyW_f8D1YGaiSva3dwBaEt0GjouOJWLCndhh5MtB4a_-stDc8ss7YTc2-RVAXAQ",
+      "algorithm": "Ed25519"
+    },
+    "anomaly_score": null,
+    "hash": "ada5c01f9e7d28932cc3fbd041b3071f74893be78ff970631df1131ea9897f89"
+  }
+]

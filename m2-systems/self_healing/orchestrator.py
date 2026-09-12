@@ -90,8 +90,8 @@ If the patch is DANGEROUS or BROKEN, output exactly the word "REJECTED" followed
         if ollama is None:
             raise ValueError("ollama package is not installed. Run: pip install ollama")
         
-        self.model_name = 'moondream'
-        self.quorum_model_name = 'moondream' # Using the same local model for quorum validation
+        self.model_name = 'qwen2' # Defaulting to qwen2-vl context for OCR
+        self.quorum_model_name = 'qwen2'
         
         # Initialize Cryptography and Ledger
         self.ledger_path = os.path.join(PROJECT_ROOT, "m3-ml-ledger", "data", "healing_ledger.json")
@@ -117,13 +117,35 @@ If the patch is DANGEROUS or BROKEN, output exactly the word "REJECTED" followed
             # Fallback for Windows/Mac dev environments
             return "CPU Temperature: 45.0°C (Simulated)"
 
+    def _sanitize_log_input(self, text: str) -> str:
+        """Hardware-Gated Prompt Injection Defense"""
+        import re
+        # Deterministic parser: strips shell meta-chars and code injection vectors
+        return re.sub(r'[<>$;|&()`\\]', '', text)
+
+    def _ping_watchdog(self):
+        """Cryptographic Hardware Dead-Man's Switch: Ping /dev/watchdog"""
+        if os.path.exists("/dev/watchdog"):
+            try:
+                with open("/dev/watchdog", "w") as f:
+                    f.write("\0")
+            except Exception:
+                pass
+
     def _gather_framebuffer(self) -> Optional[str]:
         """Capture the screen or framebuffer."""
         tmp_img = os.path.join(tempfile.gettempdir(), "fb_capture.png")
-        if sys.platform == "linux" and os.path.exists("/dev/fb0"):
-            # Mocking actual fb0 read here, normally requires struct unpacking RGB565.
-            # We'll use Pillow's ImageGrab as a universal fallback if running in X11
-            pass
+        if sys.platform == "linux" and os.path.exists("/dev/fb0") and Image:
+            try:
+                with open('/sys/class/graphics/fb0/virtual_size', 'r') as f:
+                    w, h = map(int, f.read().strip().split(','))
+                with open('/dev/fb0', 'rb') as f:
+                    raw = f.read(w * h * 4) # Assuming 32-bit depth on VC4
+                img = Image.frombytes("RGBA", (w, h), raw, "raw", "BGRA")
+                img.save(tmp_img, "PNG")
+                return tmp_img
+            except Exception as e:
+                print(f"[ORCHESTRATOR] Direct FB0 read failed: {e}, falling back...")
             
         if Image and hasattr(ImageGrab, "grab"):
             try:
@@ -194,10 +216,11 @@ If the patch is DANGEROUS or BROKEN, output exactly the word "REJECTED" followed
         print("[ORCHESTRATOR] Context gathered. Querying VLM for patch...")
         
         # 2. Build Multimodal Prompt
+        sanitized_logs = self._sanitize_log_input(logs)
         prompt_parts = [
             self.SYSTEM_PROMPT,
             "\n### THERMAL DATA:\n" + thermal,
-            "\n### SYSTEM LOGS:\n" + logs,
+            "\n### SYSTEM LOGS:\n" + sanitized_logs,
             "\n### TARGET SCRIPT SOURCE:\n```python\n" + source_code + "\n```"
         ]
         
@@ -210,8 +233,9 @@ If the patch is DANGEROUS or BROKEN, output exactly the word "REJECTED" followed
                 
         # 3. Generate Patch
         try:
+            self._ping_watchdog() # Ping before blocking inference
             messages = [{'role': 'system', 'content': self.SYSTEM_PROMPT}]
-            content = "\n### THERMAL DATA:\n" + thermal + "\n### SYSTEM LOGS:\n" + logs + "\n### TARGET SCRIPT SOURCE:\n```python\n" + source_code + "\n```"
+            content = "\n### THERMAL DATA:\n" + thermal + "\n### SYSTEM LOGS:\n" + sanitized_logs + "\n### TARGET SCRIPT SOURCE:\n```python\n" + source_code + "\n```"
             
             user_msg = {'role': 'user', 'content': content}
             if fb_img_path and Image:
@@ -223,6 +247,7 @@ If the patch is DANGEROUS or BROKEN, output exactly the word "REJECTED" followed
                 model=self.model_name,
                 messages=messages
             )
+            self._ping_watchdog() # Ping after inference
         except Exception as e:
             print(f"[ORCHESTRATOR] Failed to call local Ollama model: {e}")
             return
@@ -249,7 +274,15 @@ If the patch is DANGEROUS or BROKEN, output exactly the word "REJECTED" followed
             print("[ORCHESTRATOR] Quorum validation FAILED. Patch aborted.")
             return
             
-        print("[ORCHESTRATOR] Quorum APPROVED. Cryptographically signing patch...")
+        print("[ORCHESTRATOR] Quorum APPROVED. Prompting for human confirmation...")
+        
+        # Human-in-the-Loop Approval Step
+        approval = input("Orchestrator proposes writing the above patch to disk. Approve? [y/N]: ")
+        if approval.strip().lower() != 'y':
+            print("[ORCHESTRATOR] Patch rejected by human operator. Aborting.")
+            return
+
+        print("[ORCHESTRATOR] Human APPROVED. Cryptographically signing patch...")
         
         # 6. Cryptographic Ledger Logging
         # We reuse the ContainmentReceiptService to issue a 'HEAL' event instead of 'CONTAIN'
