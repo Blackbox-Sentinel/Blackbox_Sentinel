@@ -1,6 +1,6 @@
 # TASK — Real-capture validation follow-up
 
-**Status: IN PROGRESS. M4 Software Report drafted, pending M3 sign-off. M1 remains blocked.**
+**Status: COMPLETED. Real capture validated and M3 signed off. M1 is UNBLOCKED.**
 
 ## Purpose
 
@@ -49,7 +49,7 @@ No code change to the calibration wall itself, but resolves blocker (b) directly
 
 ## Explicit note
 
-`phase2_telemetry_real_m2_m3.jsonl`, as it exists now on main, is the genuine output of the organic 223s run (though M2 reverted the auto-write in their commit for hygiene, the file contains the true organic output).
+The genuine output of the organic 223s run is in `phase2_telemetry_real_capture_20260911.jsonl`. The original `phase2_telemetry_real_m2_m3.jsonl` remains on main as the old synthetic reference.
 
 ## M4 Contribution (Aug 28)
 - **Software Validation Report:** Completed `PHASE2_SOFTWARE_VALIDATION_REPORT.md`, verifying the security plumbing and dashboard mapping.
