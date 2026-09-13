@@ -10,7 +10,7 @@ Group=sentinel
 WorkingDirectory=/home/sentinel/Blackbox_Sentinel
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/sentinel/.Xauthority"
-ExecStart=/usr/bin/python3 app_web.py
+ExecStart=/bin/bash /home/sentinel/Blackbox_Sentinel/tools/start_kiosk.sh
 Restart=always
 RestartSec=5
 # Allow giving up after 50 crashes within 10 minutes to prevent boot loops if completely broken
