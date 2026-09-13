@@ -1,26 +1,29 @@
 [Unit]
-Description=BlackBox Sentinel — Headless Flask Orchestrator
-# Headless mode: no display required. Access UI at http://<pi-ip>:5000
-After=network-online.target
-Wants=network-online.target
+Description=BlackBox Sentinel Kiosk and Orchestrator
+After=network.target graphical.target systemd-user-sessions.service
+Wants=graphical.target
 
 [Service]
 Type=simple
-User=root
 WorkingDirectory=/home/sentinel/Blackbox_Sentinel
-Environment=SENTINEL_HARDWARE=hw
-Environment=SENTINEL_ED25519_KEY=pTzAdlRSVMXTi2PNIXM1BiONgTEHAxyea2wxPEoR-0Q
-Environment=PYTHONUNBUFFERED=1
-ExecStart=/bin/bash /home/sentinel/Blackbox_Sentinel/tools/start_sentinel.sh
+StandardInput=tty
+StandardOutput=journal
+TTYPath=/dev/tty7
+TTYReset=yes
+TTYVHangup=yes
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=/home/sentinel/.Xauthority"
+ExecStart=/bin/bash /home/sentinel/Blackbox_Sentinel/tools/start_kiosk.sh
 Restart=always
 RestartSec=5
+# Allow giving up after 50 crashes within 10 minutes to prevent boot loops if completely broken
 StartLimitIntervalSec=600
 StartLimitBurst=50
 
-# Security Hardening
+# Security Hardening for the daemon
 ProtectSystem=full
 ProtectHome=read-only
-ReadWritePaths=/home/sentinel/Blackbox_Sentinel/logs_and_data /home/sentinel/Blackbox_Sentinel/m3-ml-ledger /tmp /home/sentinel/.local
+ReadWritePaths=/home/sentinel/Blackbox_Sentinel/logs_and_data /home/sentinel/Blackbox_Sentinel/m3-ml-ledger /tmp /home/sentinel/.config/chromium /home/sentinel/.cache /home/sentinel/.pki /home/sentinel/.local /root/.cache
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=graphical.target
