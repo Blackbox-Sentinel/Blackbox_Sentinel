@@ -103,7 +103,8 @@
                 <div id="telemetry-widget" style="font-family: monospace; font-size: 12px; color: #00E676; text-align: right; line-height: 1.2;">
                     <span>CPU: <span id="tel-cpu">--</span>%</span> | 
                     <span>RAM: <span id="tel-ram">--</span>%</span><br>
-                    <span>SOC: <span id="tel-temp">--</span>°C</span>
+                    <span>SOC: <span id="tel-temp">--</span>°C</span> |
+                    <span>ESP32: <span id="tel-esp32-temp">--</span>°C</span>
                 </div>
                 <div class="quick-settings-pill" onclick="toggleQuickSettings()">
                     <span class="qs-icon">🖧</span>
@@ -487,6 +488,21 @@
                             </div>
                             <button class="btn-ubuntu btn-secondary" onclick="broadcastMeshThreat()">Gossip Lateral Threat</button>
                         </div>
+                        
+                        <div class="hw-module-card">
+                            <div class="hw-head">
+                                <div class="hw-icon">🩺</div>
+                                <div>
+                                    <h3>ESP32 Microcontroller Health</h3>
+                                    <p>I2C Temperature &amp; Relay Diagnostics</p>
+                                </div>
+                            </div>
+                            <div class="hw-state-row">
+                                <span>ESP32 Core Temp:</span>
+                                <span class="badge-status text-cyan"><span id="hw-esp32-temp">--</span>°C (NORMAL)</span>
+                            </div>
+                            <button class="btn-ubuntu btn-primary" onclick="triggerHardwareCheck()">Run Full Hardware Diagnostic Check</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -648,7 +664,6 @@
 
     <script src="app.js?v=4"></script>
     <script>
-        // Telemetry Polling
         setInterval(async () => {
             try {
                 let res = await fetch("/api/system_stats");
@@ -656,6 +671,8 @@
                 document.getElementById("tel-cpu").innerText = data.cpu;
                 document.getElementById("tel-ram").innerText = data.ram;
                 document.getElementById("tel-temp").innerText = data.temp;
+                document.getElementById("tel-esp32-temp").innerText = data.esp32_temp;
+                document.getElementById("hw-esp32-temp").innerText = data.esp32_temp;
             } catch (e) {}
         }, 2000);
 

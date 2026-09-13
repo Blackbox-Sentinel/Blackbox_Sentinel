@@ -331,10 +331,14 @@ def system_stats():
         # Fallback for Windows/Mac testing where vcgencmd doesn't exist
         temp = "45.2"
         
+    # Simulate a steady ESP32 temperature with slight fluctuation
+    esp32_sim_temp = f"38.{int(time.time()) % 10}"
+        
     return jsonify({
         "cpu": cpu_percent,
         "ram": mem_percent,
-        "temp": temp
+        "temp": temp,
+        "esp32_temp": esp32_sim_temp
     })
 
 @app.route("/api/pin", methods=["POST"])
