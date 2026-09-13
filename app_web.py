@@ -103,6 +103,7 @@ class SentinelCore:
         )
         
         if success:
+            self.hal.relay.set_receipt(receipt)  # give ESP32 the signed receipt to verify
             self.hal.relay.isolate()
             self.hal.led.blink(0.2)
             self.scorer.trigger_lockdown()

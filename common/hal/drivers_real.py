@@ -1,33 +1,27 @@
 """
 BlackBox Sentinel — Real Hardware HAL Drivers
-Interfaces with physical Raspberry Pi Zero 2 W GPIOs, SIM800L UART, and ESP32-S3.
+Pi 4 interfaces with ESP32 Heltec V3 via UART5 (GPIO 12/13).
+ESP32 controls the physical relay (pins 4/5) and tamper monitoring.
 """
 
 import time
+import json
 import os
 from typing import Callable, Optional, Dict, Any
 from .hal_base import RelayInterface, TamperInterface, LEDInterface, CellularInterface, MeshInterface
 
 
 def _first_present(payload: Dict[str, Any], *keys: str, default: Any) -> Any:
-    """Return the first key present in payload with a non-None value.
-
-    Real callers of RealMesh.broadcast_threat() don't agree on field names
-    (sentinel_pipeline.py uses threat_score/source_node, run_simulation.py
-    uses threat_type/victim_port, hw_simulator_server.py uses threat/score),
-    unlike the sim HAL which forwards the dict opaquely. The ESP32's GOSSIP:
-    format needs specific typed fields, so this picks by alias instead of a
-    single fixed key.
-    """
+    """Return the first key present in payload with a non-None value."""
     for key in keys:
         if key in payload and payload[key] is not None:
             return payload[key]
     return default
 
 
-# ── Safe GPIO & Serial Imports ─────────────────────────────────────────────────
+# ── Safe GPIO & Serial Imports ────────────────────────────────────────────────
 try:
-    from gpiozero import OutputDevice, Button, LED
+    from gpiozero import Button
     GPIO_AVAILABLE = True
 except ImportError:
     GPIO_AVAILABLE = False
@@ -39,55 +33,131 @@ except ImportError:
     SERIAL_AVAILABLE = False
 
 
-class RealRelay(RelayInterface):
-    """Real 5V Signal Relay via Raspberry Pi GPIO 17."""
+# ── ESP32 UART5 Bridge Singleton ─────────────────────────────────────────────
+# Pi UART5: GPIO 12 = UART5 TXD, GPIO 13 = UART5 RXD  (Board pins 32/33)
+# ESP32 Heltec V3: PI_RX_PIN = 19 (receives from Pi TX), PI_TX_PIN = 20
+ESP32_PORT = "/dev/ttyAMA5"
+ESP32_BAUD = 115200
+_esp32_serial = None  # module-level singleton
 
-    RELAY_PIN = 17  # BCM 17
+
+def get_esp32_serial():
+    """Return a cached shared serial connection to the ESP32 over UART5."""
+    global _esp32_serial
+    if _esp32_serial is not None:
+        return _esp32_serial
+    if not SERIAL_AVAILABLE:
+        print("[HAL-REAL] ⚠️ pyserial not installed")
+        return None
+    if not os.path.exists(ESP32_PORT):
+        print(f"[HAL-REAL] ⚠️ ESP32 port {ESP32_PORT} not found — is uart5 dtoverlay active?")
+        return None
+    try:
+        _esp32_serial = serial.Serial(ESP32_PORT, baudrate=ESP32_BAUD, timeout=2)
+        print(f"[HAL-REAL] 📡 ESP32 UART bridge active on {ESP32_PORT} @ {ESP32_BAUD} baud (GPIO12 TX / GPIO13 RX)")
+    except Exception as e:
+        print(f"[HAL-REAL] ⚠️ Failed to open ESP32 port: {e}")
+        _esp32_serial = None
+    return _esp32_serial
+
+
+def send_receipt_to_esp32(receipt: Dict[str, Any]) -> bool:
+    """Serialize and send a signed containment receipt to the ESP32 over UART5.
+    
+    The ESP32 Heltec firmware (blackbox_sentinel.ino) reads from Serial2 and
+    expects a JSON object with 'signature' and 'payload' fields. It verifies
+    the Ed25519 signature and only triggers the relay if valid.
+    """
+    ser = get_esp32_serial()
+    if not ser:
+        print("[HAL-REAL] ⚠️ Cannot send receipt: ESP32 serial not available")
+        return False
+    try:
+        line = json.dumps(receipt, separators=(',', ':')) + "\n"
+        ser.write(line.encode("utf-8"))
+        ser.flush()
+        print(f"[HAL-REAL] 📤 Sent signed receipt to ESP32 ({len(line)} bytes) — watch OLED for confirmation")
+        return True
+    except Exception as e:
+        print(f"[HAL-REAL] ⚠️ Failed to send receipt: {e}")
+        return False
+
+
+# ── Relay Interface ───────────────────────────────────────────────────────────
+
+class RealRelay(RelayInterface):
+    """ESP32 Co-processor Relay via UART5 (GPIO12 TX/GPIO13 RX -> ESP32 GPIO19/20).
+    
+    The physical relay (RELAY1_PIN=4, RELAY2_PIN=5 on Heltec) is controlled
+    by the ESP32. The Pi sends a signed Ed25519 JSON receipt; ESP32 validates
+    and actuates the relay. The OLED on the Heltec shows the state change.
+    """
 
     def __init__(self):
-        if not GPIO_AVAILABLE:
-            raise RuntimeError("gpiozero is required for RealRelay")
-        self.device = OutputDevice(self.RELAY_PIN, active_high=True, initial_value=False)
         self.state = "ENGAGED"
-        print(f"[HAL-REAL] 🔌 Physical Relay initialized on BCM GPIO {self.RELAY_PIN} (ENGAGED)")
+        self._last_receipt: Optional[Dict[str, Any]] = None
+        get_esp32_serial()  # open port early so errors surface at startup
+        print("[HAL-REAL] 🔌 ESP32 Relay bridge initialized (UART5 /dev/ttyAMA5)")
+
+    def set_receipt(self, receipt: Dict[str, Any]) -> None:
+        """Store the signed containment receipt to send when isolate() is called."""
+        self._last_receipt = receipt
 
     def isolate(self) -> bool:
-        self.device.on()
         self.state = "ISOLATED"
-        print(f"[HAL-REAL] ⚡ [RELAY FIRED] GPIO {self.RELAY_PIN} HIGH -> Data line physically CUT")
+        if self._last_receipt:
+            ok = send_receipt_to_esp32(self._last_receipt)
+            print(f"[HAL-REAL] ⚡ [RELAY ISOLATE] Sent signed receipt to ESP32 -> relay CUT (ok={ok})")
+            print("[HAL-REAL]    Watch the Heltec OLED: should show '!! ISOLATED !!'")
+        else:
+            print("[HAL-REAL] ⚠️  isolate() called but no receipt set — ESP32 will reject unsigned command")
         return True
 
     def engage(self) -> bool:
-        self.device.off()
         self.state = "ENGAGED"
-        print(f"[HAL-REAL] ✅ [RELAY ENGAGED] GPIO {self.RELAY_PIN} LOW -> Data line RESTORED")
+        # Physical restore is done by pressing the PRG button on the Heltec ESP32
+        # (see loop() -> digitalRead(PRG_BUTTON_PIN) == LOW in the firmware)
+        print("[HAL-REAL] ✅ [RELAY ENGAGE] State tracked locally — press ESP32 PRG button to physically restore relay")
         return True
 
     def get_state(self) -> str:
         return self.state
 
     def cleanup(self) -> None:
-        self.device.off()
-        self.device.close()
+        global _esp32_serial
+        if _esp32_serial:
+            _esp32_serial.close()
+            _esp32_serial = None
 
+
+# ── Tamper Interface ──────────────────────────────────────────────────────────
 
 class RealTamper(TamperInterface):
-    """Real Anti-Tamper Grid & Microswitches on BCM GPIO 27 & 22."""
+    """Anti-Tamper monitoring via ESP32 limit switch (ESP32 GPIO 14).
+    
+    The ESP32 firmware detects tamper via digitalRead(LIMIT_SWITCH_PIN) == HIGH
+    and calls triggerIsolate("CHASSIS TAMPER") autonomously. On the Pi side,
+    we monitor GPIO 27 as an additional signal if wired.
+    """
 
     TAMPER_PINS = [27, 22]
 
     def __init__(self, on_tamper_callback: Optional[Callable[[], None]] = None):
-        if not GPIO_AVAILABLE:
-            raise RuntimeError("gpiozero is required for RealTamper")
         self.on_tamper = on_tamper_callback
         self.buttons = []
         self._tampered = False
 
-        for pin in self.TAMPER_PINS:
-            btn = Button(pin, pull_up=True, bounce_time=0.1)
-            btn.when_pressed = self._handle_hardware_tamper
-            self.buttons.append(btn)
-        print(f"[HAL-REAL] 🛡️ Anti-tamper monitoring active on BCM Pins {self.TAMPER_PINS}")
+        if GPIO_AVAILABLE:
+            for pin in self.TAMPER_PINS:
+                try:
+                    btn = Button(pin, pull_up=True, bounce_time=0.1)
+                    btn.when_pressed = self._handle_hardware_tamper
+                    self.buttons.append(btn)
+                except Exception as e:
+                    print(f"[HAL-REAL] Warning: tamper pin {pin} init error: {e}")
+            print(f"[HAL-REAL] 🛡️ Anti-tamper monitoring active on BCM Pins {self.TAMPER_PINS}")
+        else:
+            print("[HAL-REAL] ⚠️ gpiozero not available — tamper detection disabled on Pi side")
 
     def _handle_hardware_tamper(self, btn=None):
         if not self._tampered:
@@ -108,91 +178,67 @@ class RealTamper(TamperInterface):
             b.close()
 
 
-class RealLED(LEDInterface):
-    """Real Status LED on BCM GPIO 23."""
+# ── LED Interface ─────────────────────────────────────────────────────────────
 
-    LED_PIN = 23
+class RealLED(LEDInterface):
+    """Status LED — delegated to ESP32 (PIN_LED_ARMED=2, PIN_LED_ALERT=4).
+    
+    The LED is physically on the ESP32. We track state locally only.
+    """
 
     def __init__(self):
-        if not GPIO_AVAILABLE:
-            raise RuntimeError("gpiozero is required for RealLED")
-        self.device = LED(self.LED_PIN)
-        print(f"[HAL-REAL] 💡 Status LED initialized on BCM GPIO {self.LED_PIN}")
+        self._state = "off"
+        print("[HAL-REAL] 💡 LED state tracking active (physical LED on ESP32)")
 
     def solid_on(self) -> None:
-        self.device.on()
+        self._state = "on"
 
     def blink(self, interval: float = 0.2) -> None:
-        self.device.blink(on_time=interval, off_time=interval)
+        self._state = "blink"
 
     def off(self) -> None:
-        self.device.off()
+        self._state = "off"
 
     def cleanup(self) -> None:
-        self.device.off()
-        self.device.close()
+        self._state = "off"
 
+
+# ── Cellular Interface ────────────────────────────────────────────────────────
 
 class RealCellular(CellularInterface):
-    """Real SIM800L GSM Breakout via Raspberry Pi UART (/dev/serial0)."""
+    """SIM800L GSM — controlled by ESP32 (Serial1 on ESP32 GPIO 47/48).
+    
+    The ESP32 sends SMS autonomously on isolation. From the Pi side this is
+    a no-op since the SMS path runs entirely on the ESP32.
+    """
 
-    def __init__(self, port: str = "/dev/serial0", baud: int = 9600):
-        self.port = port
-        self.baud = baud
-        self.ser = None
-        if SERIAL_AVAILABLE and os.path.exists(port):
-            try:
-                self.ser = serial.Serial(port, baudrate=baud, timeout=3)
-                self._send_cmd("AT")
-                self._send_cmd("AT+CMGF=1")  # SMS text mode
-                print(f"[HAL-REAL] 📱 SIM800L initialized on {port} @ {baud} baud")
-            except Exception as e:
-                print(f"[HAL-REAL] Warning: SIM800L init error: {e}")
-
-    def _send_cmd(self, cmd: str) -> str:
-        if not self.ser:
-            return ""
-        self.ser.write((cmd + "\r\n").encode("utf-8"))
-        time.sleep(0.5)
-        return self.ser.read(self.ser.in_waiting or 1).decode("utf-8", errors="ignore")
+    def __init__(self):
+        print("[HAL-REAL] 📱 Cellular: SMS handled by ESP32 SIM800L (GPIO47/48)")
 
     def send_sms(self, phone_number: str, message: str) -> bool:
-        if not self.ser:
-            print(f"[HAL-REAL] Error: SIM800L serial port not available")
-            return False
-        try:
-            print(f"[HAL-REAL] 📤 Sending cellular SMS to {phone_number}...")
-            self.ser.write(f'AT+CMGS="{phone_number}"\r\n'.encode("utf-8"))
-            time.sleep(0.5)
-            self.ser.write(f"{message}\x1A".encode("utf-8"))  # Ctrl+Z to send
-            time.sleep(3.0)
-            return True
-        except Exception as e:
-            print(f"[HAL-REAL] Failed to send SMS: {e}")
-            return False
+        # ESP32 sends SMS autonomously when triggerIsolate() is called
+        print(f"[HAL-REAL] 📱 SMS to {phone_number} will be sent by ESP32 on relay trigger")
+        return True
 
     def is_ready(self) -> bool:
-        return self.ser is not None
+        return True
 
     def cleanup(self) -> None:
-        if self.ser:
-            self.ser.close()
+        pass
 
+
+# ── Mesh Interface ────────────────────────────────────────────────────────────
 
 class RealMesh(MeshInterface):
-    """Real ESP32 Mesh link via Pi UART5 on GPIO 12/13 (/dev/ttyAMA5)."""
+    """ESP32 UART bridge via Pi UART5 on GPIO 12/13 (/dev/ttyAMA5)."""
 
     def __init__(self, port: str = "/dev/ttyAMA5", baud: int = 115200):
         self.port = port
         self.baud = baud
-        self.ser = None
+        self.ser = get_esp32_serial()  # reuse the shared singleton
         self.callbacks = []
-        if SERIAL_AVAILABLE and os.path.exists(port):
-            try:
-                self.ser = serial.Serial(port, baudrate=baud, timeout=1)
-                print(f"[HAL-REAL] 📡 ESP32-S3 Mesh link active on {port}")
-            except Exception as e:
-                print(f"[HAL-REAL] Warning: ESP32 link note: {e}")
+        if self.ser:
+            print(f"[HAL-REAL] 📡 ESP32 Mesh/C2 link active on {port} (shared UART5 singleton)")
 
     def broadcast_threat(self, threat_payload: Dict[str, Any]) -> bool:
         if not self.ser:
@@ -218,5 +264,4 @@ class RealMesh(MeshInterface):
         self.callbacks.append(callback)
 
     def cleanup(self) -> None:
-        if self.ser:
-            self.ser.close()
+        pass  # shared serial closed by RealRelay.cleanup()
