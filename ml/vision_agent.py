@@ -73,11 +73,11 @@ class VisionAnalyzer:
         try:
             image = Image.open(screenshot_path)
             enc_image = self.model.encode_image(image)
-            prompt = "Analyze this dashboard screenshot. Is it a blank black screen, or does it show error messages indicating a crash?"
+            prompt = "Analyze this dashboard screenshot. Is it a blank black screen, does it show error messages indicating a crash, or is the UI tiny and improperly scaled in the corner?"
             answer = self.model.answer_question(enc_image, prompt, self.tokenizer)
             
-            # Detect if the VLM thinks the screen is blank, black, or crashed
-            is_anomaly = any(word in answer.lower() for word in ["blank", "black", "crash", "error", "terminal", "console"])
+            # Detect if the VLM thinks the screen is blank, black, crashed, or scaled improperly
+            is_anomaly = any(word in answer.lower() for word in ["blank", "black", "crash", "error", "terminal", "console", "tiny", "small", "scale", "improper"])
             
             return {
                 "status": "success",
