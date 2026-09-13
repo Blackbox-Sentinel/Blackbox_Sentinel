@@ -7,10 +7,22 @@ import time
 import json
 import threading
 import queue
+import logging
+import base64
+import psutil
+import subprocess
 from collections import deque
 from datetime import datetime, timezone
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
+from ml.vision_agent import VisionAnalyzer
+
+app = Flask(__name__, template_folder="m4-gui-venture/web", static_folder="m4-gui-venture/web")
+app.config['SECRET_KEY'] = 'edge-sentinel-vault-key-2026'
+CORS(app)
+
+# Initialize the global Vision LLM Analyzer
+vision_agent = VisionAnalyzer()
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = CURRENT_DIR if os.path.isdir(os.path.join(CURRENT_DIR, "m2-systems")) else os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
@@ -270,12 +282,49 @@ def tamper():
     core.hal.tamper.simulate_tamper()
     return jsonify({"status": "ok"})
 
+@app.route("/api/hardware_check", methods=["POST"])
+def hardware_check():
+    core.append_log("TEST: Manual Hardware Check Triggered")
+    core.hal.relay.isolate()
+    core.hal.led.blink(0.5)
+    return jsonify({"status": "ok", "message": "Hardware check executed"})
+
+@app.route("/api/system_stats")
+def system_stats():
+    cpu_percent = psutil.cpu_percent(interval=None)
+    mem = psutil.virtual_memory()
+    mem_percent = mem.percent
+    try:
+        temp_out = subprocess.check_output(["vcgencmd", "measure_temp"], text=True)
+        temp = temp_out.replace("temp=", "").strip()
+    except Exception:
+        temp = "N/A"
+    return jsonify({
+        "cpu": cpu_percent,
+        "ram": mem_percent,
+        "temp": temp
+    })
+
 @app.route("/api/pin", methods=["POST"])
 def pin():
     code = request.json.get("pin")
     if core.pin_override(code):
         return jsonify({"status": "success"})
     return jsonify({"status": "rejected"}), 403
+
+@app.route("/api/vision_analyze", methods=["POST"])
+def vision_analyze():
+    # Currently just runs in simulated mode since no camera is attached yet
+    core.append_log("Starting Offline Vision LLM analysis...")
+    result = vision_agent.analyze_image()
+    
+    if result.get("anomaly_detected"):
+        core.append_log(f"dY\" [VISION ALERT] Anomaly detected: {result.get('analysis')}")
+        core.hal.relay.isolate()
+    else:
+        core.append_log(f"-? [VISION CLEAR] {result.get('analysis')}")
+        
+    return jsonify(result)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)

@@ -99,7 +99,12 @@
                 </button>
             </div>
 
-            <div class="topbar-right">
+            <div class="topbar-right" style="display: flex; align-items: center; gap: 15px;">
+                <div id="telemetry-widget" style="font-family: monospace; font-size: 12px; color: #00E676; text-align: right; line-height: 1.2;">
+                    <span>CPU: <span id="tel-cpu">--</span>%</span> | 
+                    <span>RAM: <span id="tel-ram">--</span>%</span><br>
+                    <span>SOC: <span id="tel-temp">--</span>°C</span>
+                </div>
                 <div class="quick-settings-pill" onclick="toggleQuickSettings()">
                     <span class="qs-icon">🖧</span>
                     <span class="qs-icon">📶</span>
@@ -138,6 +143,13 @@
                     <div class="qs-tile-text">
                         <div class="qs-tile-title">Tamper Test</div>
                         <div class="qs-tile-sub">Trip Chassis Sensor</div>
+                    </div>
+                </div>
+                <div class="qs-tile" onclick="triggerHardwareCheck()">
+                    <div class="qs-tile-icon">🔌</div>
+                    <div class="qs-tile-text">
+                        <div class="qs-tile-title">Hardware Check</div>
+                        <div class="qs-tile-sub">Test ESP32 Relay Isolation</div>
                     </div>
                 </div>
             </div>
@@ -628,5 +640,28 @@
     <div id="gnome-toast" class="gnome-toast"></div>
 
     <script src="app.js"></script>
+    <script>
+        // Telemetry Polling
+        setInterval(async () => {
+            try {
+                let res = await fetch("/api/system_stats");
+                let data = await res.json();
+                document.getElementById("tel-cpu").innerText = data.cpu;
+                document.getElementById("tel-ram").innerText = data.ram;
+                document.getElementById("tel-temp").innerText = data.temp;
+            } catch (e) {}
+        }, 2000);
+
+        // Hardware Check Trigger
+        async function triggerHardwareCheck() {
+            try {
+                let res = await fetch("/api/hardware_check", { method: "POST" });
+                let data = await res.json();
+                alert(data.message || "Hardware triggered");
+            } catch (e) {
+                alert("Error triggering hardware");
+            }
+        }
+    </script>
 </body>
 </html>
