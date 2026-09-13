@@ -1,0 +1,27 @@
+[Unit]
+Description=BlackBox Sentinel Kiosk and Orchestrator
+After=network.target graphical.target systemd-user-sessions.service
+Wants=graphical.target
+
+[Service]
+Type=simple
+User=sentinel
+Group=sentinel
+WorkingDirectory=/home/sentinel/blackbox-sentinel
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=/home/sentinel/.Xauthority"
+ExecStart=/usr/bin/python3 app_web.py
+Restart=always
+RestartSec=5
+# Allow giving up after 50 crashes within 10 minutes to prevent boot loops if completely broken
+StartLimitIntervalSec=600
+StartLimitBurst=50
+
+# Security Hardening for the daemon
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/sentinel/blackbox-sentinel/logs_and_data /tmp
+
+[Install]
+WantedBy=graphical.target
