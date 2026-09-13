@@ -493,9 +493,13 @@
                             <div class="hw-head">
                                 <div class="hw-icon">🩺</div>
                                 <div>
-                                    <h3>ESP32 Microcontroller Health</h3>
-                                    <p>I2C Temperature &amp; Relay Diagnostics</p>
+                                    <h3>System &amp; Microcontroller Health</h3>
+                                    <p>SOC Temperature &amp; Relay Diagnostics</p>
                                 </div>
+                            </div>
+                            <div class="hw-state-row">
+                                <span>Raspberry Pi (SOC):</span>
+                                <span class="badge-status text-cyan"><span id="hw-rpi-temp">--</span>°C</span>
                             </div>
                             <div class="hw-state-row">
                                 <span>ESP32 Core Temp:</span>
@@ -672,6 +676,7 @@
                 document.getElementById("tel-ram").innerText = data.ram;
                 document.getElementById("tel-temp").innerText = data.temp;
                 document.getElementById("tel-esp32-temp").innerText = data.esp32_temp;
+                document.getElementById("hw-rpi-temp").innerText = data.temp;
                 document.getElementById("hw-esp32-temp").innerText = data.esp32_temp;
             } catch (e) {}
         }, 2000);
