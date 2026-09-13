@@ -8,6 +8,11 @@ Type=simple
 User=sentinel
 Group=sentinel
 WorkingDirectory=/home/sentinel/Blackbox_Sentinel
+PAMName=login
+StandardInput=tty
+TTYPath=/dev/tty7
+TTYReset=yes
+TTYVHangup=yes
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/sentinel/.Xauthority"
 ExecStart=/bin/bash /home/sentinel/Blackbox_Sentinel/tools/start_kiosk.sh

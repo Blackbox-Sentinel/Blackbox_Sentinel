@@ -14,7 +14,7 @@ FLASK_PID=$!
 sleep 5
 
 # Launch Chromium in Kiosk mode inside a dedicated X11 Server
-xinit /usr/bin/chromium-browser --noerrdialogs --disable-infobars --kiosk http://localhost:5000/ --window-size=800,480 --window-position=0,0 -- :0 -s 0 dpms -nocursor &
+xinit /usr/bin/chromium-browser --noerrdialogs --disable-infobars --kiosk http://localhost:5000/ --window-size=800,480 --window-position=0,0 -- :0 -s 0 dpms -nocursor vt7 &
 XINIT_PID=$!
 
 # If either the backend or the frontend crashes, exit so Systemd can restart everything
