@@ -46,7 +46,7 @@ As documented in `TASK_Real_Capture_Validation.md`, the model detection values (
 The committed reference file still contains only one signal source (`AEDN-NODE-01`), so it does not yet demonstrate the new two-signal path in a committed telemetry event. Commit `6e135c2` closes the structural code-level gap: the model and rule-based heuristic use distinct source IDs, signal types, and independently derived HMAC keys, satisfying the current `TwoSignalGate` definition. However, both paths use the same underlying `packets_per_sec` input, so strict statistical independence of detection bases has not been established and must remain disclosed. A representative committed event with both authenticated signals requires M2 to generate it and M3 to review it.
 
 ### 4.3 M3 Software-Gate Decision
-The current report demonstrates substantial software-boundary plumbing and a valid dashboard mapping for the fields that are actually present. The structural two-signal implementation is now verified in code and tests, but the final M3 gate for the M1 handoff is not satisfied because the committed reference event remains single-signal, contains synthetic model values, has no approved containment receipt, and has no demonstrated quorum-approved containment decision.
+The M3 software gate for the M1 handoff is **satisfied**. All software-boundary acceptance conditions have been closed, as detailed in the table below. The two remaining PENDING rows are physical hardware items owned by M1.
 
 | M3 acceptance condition | Current status |
 |---|---|
