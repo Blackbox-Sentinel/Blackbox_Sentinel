@@ -1,5 +1,5 @@
 /*
- * Blackbox Sentinel - MASTER FIRMWARE
+ * Blackbox Sentinel - MASTER FIRMWARE v2.1
  * Board: Heltec ESP32 V3
  * 
  * Hardware Responsibilities:
@@ -7,6 +7,11 @@
  * 2. Chassis Tamper monitoring (Limit Switch)
  * 3. Out-of-band alerts (SIM800L GSM Module)
  * 4. UART5 Bridge to ML Engine (Raspberry Pi)
+ * 
+ * v2.1 CHANGES:
+ * - All status responses now sent over BOTH Serial (USB debug) AND Serial2 (Pi bridge)
+ * - Added heartbeat every 5s over Serial2 so Pi can confirm link is alive
+ * - OLED rotation fixed (U8G2_R1 = 90deg CW for vertical mount)
  */
 
 #include <U8g2lib.h>
@@ -18,24 +23,21 @@
 Preferences preferences;
 
 // ==========================================
-// 🚨 USER CONFIGURATION - EDIT THESE! 🚨
+// USER CONFIGURATION
 // ==========================================
-
-// This is the default emergency phone number if one hasn't been set yet.
 String EMERGENCY_PHONE = "+919914551405";
 
 // Tamper Switch Logic:
-// The user specified: "when it is pressed it is closed".
-// Since the lid presses the switch when secure, it is closed (LOW) when safe.
-// When the lid is removed, the switch opens, and the internal PULLUP pulls it to HIGH.
+// Switch is CLOSED (LOW) when lid is secure.
+// Switch OPENS (HIGH) when lid is removed -> HIGH = tamper
 #define TAMPER_TRIGGER_STATE HIGH 
 
 // ==========================================
 // PIN DEFINITIONS
 // ==========================================
 // Raspberry Pi Bridge UART (Serial2)
-#define PI_RX_PIN 19
-#define PI_TX_PIN 20
+#define PI_RX_PIN 19   // ESP32 RX <- Pi GPIO12 TX
+#define PI_TX_PIN 20   // ESP32 TX -> Pi GPIO13 RX
 
 // SIM800L GSM UART (Serial1)
 #define GSM_RX_PIN 47
@@ -43,11 +45,11 @@ String EMERGENCY_PHONE = "+919914551405";
 
 // Hardware Defense Pins
 #define LIMIT_SWITCH_PIN 14
-#define RELAY1_PIN 4  // Channel 1 of the new 2-Channel Relay
-#define RELAY2_PIN 5  // Channel 2 of the new 2-Channel Relay
-#define PRG_BUTTON_PIN 0 // Built-in "PRG" button on Heltec ESP32 V3
+#define RELAY1_PIN 4   // Channel 1 - Active-Low relay
+#define RELAY2_PIN 5   // Channel 2 - Active-Low relay
+#define PRG_BUTTON_PIN 0  // Built-in PRG button
 
-// OLED I2C Pins
+// OLED I2C Pins (Heltec V3)
 #define OLED_SDA 17
 #define OLED_SCL 18
 #define OLED_RST 21
@@ -55,100 +57,70 @@ String EMERGENCY_PHONE = "+919914551405";
 // ==========================================
 // GLOBAL STATE
 // ==========================================
-U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ OLED_RST, /* clock=*/ OLED_SCL, /* data=*/ OLED_SDA);
+// U8G2_R1 = 90 degree rotation for vertical OLED mount
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R1, /* reset=*/ OLED_RST, /* clock=*/ OLED_SCL, /* data=*/ OLED_SDA);
 
 bool isAirGapped = false;
+unsigned long lastHeartbeat = 0;
 unsigned long lastGsmInit = 0;
 
-void setup() {
-  // Power up OLED explicitly for Heltec V3
-  pinMode(36, OUTPUT);
-  digitalWrite(36, LOW); 
-  delay(50);
-
-  // Initialize Screen
-  Wire.begin(OLED_SDA, OLED_SCL);
-  u8g2.begin();
-  u8g2.setFont(u8g2_font_ncenB08_tr);
-
-  // Initialize Defense Hardware
-  pinMode(LIMIT_SWITCH_PIN, INPUT_PULLUP);
-  // To safely turn OFF a 5V Active-Low relay with a 3.3V ESP32, 
-  // we must float the pin (INPUT) instead of driving it HIGH (3.3V), 
-  // because 3.3V is not high enough to turn the 5V relay off!
-  pinMode(RELAY1_PIN, INPUT); // Floating = Relay 1 OFF (Network Flowing)
-  pinMode(RELAY2_PIN, INPUT); // Floating = Relay 2 OFF
-
-  // Load saved phone number from flash memory
-  preferences.begin("sentinel", false);
-  String savedPhone = preferences.getString("phone", "");
-  if (savedPhone.length() > 0) {
-      EMERGENCY_PHONE = savedPhone;
-  }
-
-  // Initialize USB Debug Serial
-  Serial.begin(115200);
-
-  // Initialize GSM Shield (Serial1)
-  Serial1.begin(115200, SERIAL_8N1, GSM_RX_PIN, GSM_TX_PIN);
-
-
-
-  // Initialize Raspberry Pi Bridge (Serial2) - 1024 byte buffer for full receipt payload
-  Serial2.setRxBufferSize(1024);
-  Serial2.begin(115200, SERIAL_8N1, PI_RX_PIN, PI_TX_PIN);
-
-  // Boot sequence complete
-  updateOLED("SYSTEM ARMED", "All Sensors Live");
-  Serial.println("\n=== BLACKBOX SENTINEL : MASTER FIRMWARE ===");
-  Serial.println("System Armed. Monitoring...");
+// ==========================================
+// HELPER: Print to BOTH serial ports
+// ==========================================
+void serialBoth(String msg) {
+  Serial.println(msg);
+  Serial2.println(msg);
 }
 
-// Helper to quickly draw to OLED
+// ==========================================
+// OLED HELPER
+// ==========================================
 void updateOLED(String line1, String line2) {
   u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_ncenB08_tr);
   u8g2.drawStr(5, 15, line1.c_str());
-  u8g2.drawStr(5, 35, line2.substring(0, 15).c_str()); // Prevent off-screen wrap
+  u8g2.drawStr(5, 35, line2.substring(0, 15).c_str());
   u8g2.sendBuffer();
 }
 
-// Master Isolation Function
+// ==========================================
+// MASTER ISOLATION FUNCTION
+// ==========================================
 void triggerIsolate(String reason) {
-  if (isAirGapped) return; // Already triggered, do nothing
+  if (isAirGapped) return;
   
   isAirGapped = true;
   
-  // 1. Physically cut the network relay!
-  // To turn it ON, we drive it to GROUND (0V)
+  // Cut the relay (Active-Low: OUTPUT + LOW = relay ON = network cut)
   pinMode(RELAY1_PIN, OUTPUT);
   digitalWrite(RELAY1_PIN, LOW); 
-  
   pinMode(RELAY2_PIN, OUTPUT);
   digitalWrite(RELAY2_PIN, LOW); 
   
-  // 2. Update screen
   updateOLED("!! ISOLATED !!", reason);
-  Serial.println("\n🚨 CRITICAL EVENT: " + reason);
-  Serial.println("🚨 RELAY AIR-GAPPED!");
+  
+  // Notify BOTH USB debug serial AND Pi over Serial2
+  serialBoth("{\"event\":\"relay_isolated\",\"reason\":\"" + reason + "\"}");
 
-  // 3. Send out-of-band SMS via GSM
-  Serial1.println("AT+CMGF=1"); // Set text mode
+  // Send out-of-band SMS via SIM800L
+  Serial1.println("AT+CMGF=1");
   delay(200);
   Serial1.println("AT+CMGS=\"" + EMERGENCY_PHONE + "\""); 
   delay(200);
   Serial1.print("BLACKBOX ALERT: " + reason + " - NETWORK AIR-GAPPED."); 
   delay(200);
-  Serial1.write(26); // ASCII Ctrl+Z to send the SMS
+  Serial1.write(26); // Ctrl+Z to send SMS
   
-  Serial.println("🚨 SMS DISPATCHED.");
+  serialBoth("{\"event\":\"sms_dispatched\",\"phone\":\"" + EMERGENCY_PHONE + "\"}");
 }
 
-
-
-// Trusted Public Key (Base64Url: 3pYnfYvnsd1MUrke1J6MqIj6xd0Dra2kHgrErkz7ids)
+// ==========================================
+// TRUSTED PUBLIC KEY (Ed25519)
+// Base64Url: ZI48kNsD__8q2Sp_LJLRzT4W8Iaku8DsmG95Myov66k
+// ==========================================
 const uint8_t TRUSTED_PUB_KEY[32] = {
-    0xde, 0x96, 0x27, 0x7d, 0x8b, 0xe7, 0xb1, 0xdd, 0x4c, 0x52, 0xb9, 0x1e, 0xd4, 0x9e, 0x8c, 0xa8, 
-    0x88, 0xfa, 0xc5, 0xdd, 0x03, 0xad, 0xad, 0xa4, 0x1e, 0x0a, 0xc4, 0xae, 0x4c, 0xfb, 0x89, 0xdb
+    0x64, 0x8e, 0x3c, 0x90, 0xdb, 0x03, 0xff, 0xff, 0x2a, 0xd9, 0x2a, 0x7f, 0x2c, 0x92, 0xd1, 0xcd, 
+    0x3e, 0x16, 0xf0, 0x86, 0xa4, 0xbb, 0xc0, 0xec, 0x98, 0x6f, 0x79, 0x33, 0x2a, 0x2f, 0xeb, 0xa9
 };
 
 int base64UrlDecode(const char* input, uint8_t* output) {
@@ -177,156 +149,200 @@ int base64UrlDecode(const char* input, uint8_t* output) {
     return out_len;
 }
 
+// ==========================================
+// PI C2 COMMAND PROCESSOR
+// ==========================================
 void processC2Message(String msg) {
-      if (msg.startsWith("{")) {
-          updateOLED("JSON RX", "Verifying...");
-          // Parse as JSON for Ed25519 Signed Receipt
-          JsonDocument doc;
-          DeserializationError err = deserializeJson(doc, msg);
-          if (!err) {
-              const char* sig_b64 = doc["signature"];
-              JsonVariant payload = doc["payload"];
-              
-              if (sig_b64 && !payload.isNull()) {
-                  // Build canonical JSON with sorted keys (must match Python sort_keys=True)
-                  // Keys in alphabetical order: algorithm, controller_id, decision, event_hash,
-                  // evidence_digest, incident_id, key_epoch, organization_id, quorum,
-                  // receipt_sequence, receipt_version, timestamp
-                  String payload_str = "{";
-                  const char* sorted_keys[] = {
-                      "algorithm", "controller_id", "decision", "event_hash",
-                      "evidence_digest", "incident_id", "key_epoch", "organization_id",
-                      "quorum", "receipt_sequence", "receipt_version", "timestamp"
-                  };
-                  bool first = true;
-                  for (int k = 0; k < 12; k++) {
-                      if (payload[sorted_keys[k]].isNull()) continue;
-                      if (!first) payload_str += ",";
-                      first = false;
-                      payload_str += "\"";
-                      payload_str += sorted_keys[k];
-                      payload_str += "\":";
-                      if (payload[sorted_keys[k]].is<const char*>()) {
-                          payload_str += "\"";
-                          payload_str += payload[sorted_keys[k]].as<const char*>();
-                          payload_str += "\"";
-                      } else {
-                          payload_str += payload[sorted_keys[k]].as<String>();
-                      }
-                  }
-                  payload_str += "}";
-                  
-                  Serial.println("Canonical: " + payload_str);
-                  
-                  // Decode signature
-                  uint8_t sig[64];
-                  int sig_len = base64UrlDecode(sig_b64, sig);
-                  
-                  if (sig_len == 64) {
-                      bool isValid = Ed25519::verify(sig, TRUSTED_PUB_KEY, payload_str.c_str(), payload_str.length());
-                      if (isValid) {
-                          const char* decision = payload["decision"];
-                          if (decision && strcmp(decision, "CONTAIN") == 0) {
-                              if (isAirGapped) {
-                                  updateOLED("!! ISOLATED !!", "SECURE CONTAIN");
-                              } else {
-                                  triggerIsolate("SECURE CONTAIN");
-                              }
-                          } else {
-                              updateOLED("REJECTED", "Not CONTAIN");
-                              Serial.println("Signature valid, but decision not CONTAIN.");
-                          }
-                      } else {
-                          updateOLED("REJECTED SIG", "Invalid Ed25519");
-                          Serial.println("🚨 INVALID Ed25519 SIGNATURE DETECTED! IGNORING COMMAND.");
-                      }
-                  } else {
-                      updateOLED("REJECTED", "Bad Sig Len");
-                      Serial.println("Signature length mismatch.");
-                  }
-              } else {
-                  updateOLED("REJECTED", "Missing Fields");
-              }
-          } else {
-              updateOLED("JSON ERROR", err.c_str());
-          }
-          delay(2000); // Give user time to read the OLED before loop continues
-          if (!isAirGapped) {
-              updateOLED("SYSTEM ARMED", "Monitoring...");
-          } else {
-              updateOLED("!! ISOLATED !!", "SECURE CONTAIN");
-          }
-      }
-      // If the Pi dynamically updates the phone number
-      else if (msg.startsWith("SET_PHONE:")) {
-          EMERGENCY_PHONE = msg.substring(10);
-          EMERGENCY_PHONE.trim();
-          preferences.putString("phone", EMERGENCY_PHONE); // Save to flash!
-          
-          updateOLED("PHONE SAVED", EMERGENCY_PHONE.c_str());
-          Serial.println("Updated Emergency Number: " + EMERGENCY_PHONE);
-          delay(2000);
-          if (!isAirGapped) updateOLED("SYSTEM ARMED", "Monitoring...");
-      }
-      else {
-          // If it's a simple legacy command without JSON signing, REJECT it.
-          Serial.println("🚨 RAW COMMAND REJECTED. MUST BE SIGNED JSON.");
-          updateOLED("REJECTED", "Unsigned");
-          delay(2000);
-          if (!isAirGapped) updateOLED("SYSTEM ARMED", "Monitoring...");
-      }
+    if (msg.startsWith("{")) {
+        updateOLED("JSON RX", "Verifying...");
+        serialBoth("{\"event\":\"receipt_received\",\"len\":" + String(msg.length()) + "}");
+
+        JsonDocument doc;
+        DeserializationError err = deserializeJson(doc, msg);
+        if (!err) {
+            const char* sig_b64 = doc["signature"];
+            JsonVariant payload = doc["payload"];
+            
+            if (sig_b64 && !payload.isNull()) {
+                // Build canonical JSON (sorted keys, must match Python sort_keys=True)
+                String payload_str = "{";
+                const char* sorted_keys[] = {
+                    "algorithm", "controller_id", "decision", "event_hash",
+                    "evidence_digest", "incident_id", "key_epoch", "organization_id",
+                    "quorum", "receipt_sequence", "receipt_version", "timestamp"
+                };
+                bool first = true;
+                for (int k = 0; k < 12; k++) {
+                    if (payload[sorted_keys[k]].isNull()) continue;
+                    if (!first) payload_str += ",";
+                    first = false;
+                    payload_str += "\"";
+                    payload_str += sorted_keys[k];
+                    payload_str += "\":";
+                    if (payload[sorted_keys[k]].is<const char*>()) {
+                        payload_str += "\"";
+                        payload_str += payload[sorted_keys[k]].as<const char*>();
+                        payload_str += "\"";
+                    } else {
+                        payload_str += payload[sorted_keys[k]].as<String>();
+                    }
+                }
+                payload_str += "}";
+                
+                // Decode and verify signature
+                uint8_t sig[64];
+                int sig_len = base64UrlDecode(sig_b64, sig);
+                
+                if (sig_len == 64) {
+                    bool isValid = Ed25519::verify(sig, TRUSTED_PUB_KEY, payload_str.c_str(), payload_str.length());
+                    if (isValid) {
+                        const char* decision = payload["decision"];
+                        if (decision && strcmp(decision, "CONTAIN") == 0) {
+                            serialBoth("{\"event\":\"sig_valid\",\"action\":\"ISOLATING\"}");
+                            if (isAirGapped) {
+                                updateOLED("!! ISOLATED !!", "ALREADY DONE");
+                            } else {
+                                triggerIsolate("SECURE CONTAIN");
+                            }
+                        } else {
+                            serialBoth("{\"event\":\"sig_valid\",\"action\":\"REJECTED_NOT_CONTAIN\"}");
+                            updateOLED("REJECTED", "Not CONTAIN");
+                        }
+                    } else {
+                        serialBoth("{\"event\":\"sig_invalid\",\"reason\":\"BAD_ED25519\"}");
+                        updateOLED("REJECTED SIG", "Invalid Ed25519");
+                    }
+                } else {
+                    serialBoth("{\"event\":\"sig_invalid\",\"reason\":\"BAD_SIG_LEN\",\"len\":" + String(sig_len) + "}");
+                    updateOLED("REJECTED", "Bad Sig Len");
+                }
+            } else {
+                serialBoth("{\"event\":\"parse_error\",\"reason\":\"MISSING_FIELDS\"}");
+                updateOLED("REJECTED", "Missing Fields");
+            }
+        } else {
+            serialBoth("{\"event\":\"json_error\",\"reason\":\"" + String(err.c_str()) + "\"}");
+            updateOLED("JSON ERROR", err.c_str());
+        }
+        delay(2000);
+        if (!isAirGapped) {
+            updateOLED("SYSTEM ARMED", "Monitoring...");
+        } else {
+            updateOLED("!! ISOLATED !!", "SECURE CONTAIN");
+        }
+    }
+    else if (msg.startsWith("SET_PHONE:")) {
+        EMERGENCY_PHONE = msg.substring(10);
+        EMERGENCY_PHONE.trim();
+        preferences.putString("phone", EMERGENCY_PHONE);
+        updateOLED("PHONE SAVED", EMERGENCY_PHONE.c_str());
+        serialBoth("{\"event\":\"phone_updated\",\"phone\":\"" + EMERGENCY_PHONE + "\"}");
+        delay(2000);
+        if (!isAirGapped) updateOLED("SYSTEM ARMED", "Monitoring...");
+    }
+    else if (msg == "PING") {
+        // Simple connectivity check - respond with status
+        serialBoth("{\"event\":\"pong\",\"isolated\":" + String(isAirGapped ? "true" : "false") + ",\"tamper\":" + String(digitalRead(LIMIT_SWITCH_PIN) == HIGH ? "true" : "false") + "}");
+    }
+    else {
+        serialBoth("{\"event\":\"rejected\",\"reason\":\"UNSIGNED_CMD\"}");
+        updateOLED("REJECTED", "Unsigned");
+        delay(2000);
+        if (!isAirGapped) updateOLED("SYSTEM ARMED", "Monitoring...");
+    }
 }
 
+// ==========================================
+// SETUP
+// ==========================================
+void setup() {
+  // Power up OLED for Heltec V3
+  pinMode(36, OUTPUT);
+  digitalWrite(36, LOW); 
+  delay(50);
+
+  Wire.begin(OLED_SDA, OLED_SCL);
+  u8g2.begin();
+
+  // Initialize Defense Hardware
+  pinMode(LIMIT_SWITCH_PIN, INPUT_PULLUP);
+  pinMode(RELAY1_PIN, INPUT);  // Floating = relay OFF (network flowing)
+  pinMode(RELAY2_PIN, INPUT);
+
+  // Load saved phone from flash
+  preferences.begin("sentinel", false);
+  String savedPhone = preferences.getString("phone", "");
+  if (savedPhone.length() > 0) {
+      EMERGENCY_PHONE = savedPhone;
+  }
+
+  // USB Debug Serial
+  Serial.begin(115200);
+
+  // GSM Shield (Serial1)
+  Serial1.begin(115200, SERIAL_8N1, GSM_RX_PIN, GSM_TX_PIN);
+
+  // Pi Bridge (Serial2) - 1024 byte RX buffer for full receipt payloads
+  Serial2.setRxBufferSize(1024);
+  Serial2.begin(115200, SERIAL_8N1, PI_RX_PIN, PI_TX_PIN);
+
+  updateOLED("SYSTEM ARMED", "All Sensors Live");
+
+  // Send boot message on BOTH ports
+  serialBoth("{\"event\":\"boot\",\"firmware\":\"v2.1\",\"phone\":\"" + EMERGENCY_PHONE + "\"}");
+}
+
+// ==========================================
+// MAIN LOOP
+// ==========================================
 void loop() {
 
-  // ==========================================
-  // 1. PHYSICAL TAMPER MONITOR
-  // ==========================================
+  // 1. TAMPER MONITOR
   if (digitalRead(LIMIT_SWITCH_PIN) == TAMPER_TRIGGER_STATE) {
       triggerIsolate("CHASSIS TAMPER");
   }
 
-  // ==========================================
-  // 2. ML THREAT MONITOR (From Raspberry Pi)
-  // ==========================================
+  // 2. PI COMMAND MONITOR (Serial2 = GPIO 19/20)
   if (Serial2.available()) {
       String msg = Serial2.readStringUntil('\n');
       msg.trim();
-      
-      Serial.println("Pi Bridge Rx: " + msg);
-      processC2Message(msg);
+      if (msg.length() > 0) {
+          Serial.println("Pi Bridge Rx: " + msg);
+          processC2Message(msg);
+      }
   }
 
-  // ==========================================
-  // 3. GSM INCOMING SMS MONITOR
-  // ==========================================
+  // 3. GSM INCOMING (commented out, enable if needed)
   /*
   if (Serial1.available()) {
       String msg = Serial1.readStringUntil('\n');
       msg.trim();
       if (msg.length() > 0) {
          Serial.println("GSM Rx: " + msg);
-         Serial2.println("GSM: " + msg); // Forward to Pi
+         Serial2.println("GSM: " + msg);
       }
   }
   */
 
-  // ==========================================
-  // 4. SECRET PHYSICAL DISARM (PRG BUTTON)
-  // ==========================================
-  // Holding the physical 'PRG' button on the Heltec restores the system
+  // 4. HEARTBEAT over Serial2 every 5 seconds (Pi can monitor this)
+  if (millis() - lastHeartbeat > 5000) {
+      lastHeartbeat = millis();
+      String hb = "{\"event\":\"heartbeat\",\"uptime\":" + String(millis()/1000) + 
+                  ",\"isolated\":" + String(isAirGapped ? "true" : "false") + 
+                  ",\"tamper\":" + String(digitalRead(LIMIT_SWITCH_PIN) == HIGH ? "true" : "false") + "}";
+      Serial.println(hb);
+      Serial2.println(hb);  // Pi will receive this to confirm UART link
+  }
+
+  // 5. PRG BUTTON = Physical disarm
   if (digitalRead(PRG_BUTTON_PIN) == LOW) {
       if (isAirGapped) {
           isAirGapped = false;
-          pinMode(RELAY1_PIN, INPUT); // Restore network relay (Float = OFF)
-          pinMode(RELAY2_PIN, INPUT); // Restore second relay (Float = OFF)
-          
-          updateOLED("SYSTEM DISARMED", "Relay Restored");
-          Serial.println("⚠️ SYSTEM DISARMED LOCALLY. RELAY RESTORED.");
-          
-          delay(2000); // Debounce / read time
-          
-          // Re-arm
+          pinMode(RELAY1_PIN, INPUT);  // Float = relay OFF = network restored
+          pinMode(RELAY2_PIN, INPUT);
+          updateOLED("DISARMED", "Relay Restored");
+          serialBoth("{\"event\":\"manually_disarmed\",\"by\":\"PRG_BUTTON\"}");
+          delay(2000);
           updateOLED("SYSTEM ARMED", "Monitoring...");
       }
   }
