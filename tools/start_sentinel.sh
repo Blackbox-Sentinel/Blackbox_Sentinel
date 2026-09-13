@@ -3,10 +3,12 @@
 # Runs Flask backend only. Access UI at http://<pi-ip>:5000 from any browser.
 # No display/X11/Chromium required.
 
-set -e
-
 PROJECT=/home/sentinel/Blackbox_Sentinel
 LOG=/tmp/flask.log
+
+# Fix log file permissions (may be owned by root from prior run)
+rm -f "$LOG" 2>/dev/null || true
+touch "$LOG" && chmod 666 "$LOG" 2>/dev/null || true
 
 # Kill any existing flask instance
 pkill -f "python3 app_web.py" 2>/dev/null || true
