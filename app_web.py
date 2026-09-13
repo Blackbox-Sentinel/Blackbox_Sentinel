@@ -16,13 +16,15 @@ from datetime import datetime, timezone
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 from ml.vision_agent import VisionAnalyzer
+from ml.remediation_agent import RemediationAgent
 
 app = Flask(__name__, template_folder="m4-gui-venture/web", static_folder="m4-gui-venture/web")
 app.config['SECRET_KEY'] = 'edge-sentinel-vault-key-2026'
 CORS(app)
 
-# Initialize the global Vision LLM Analyzer
+# Initialize the global AI Agents
 vision_agent = VisionAnalyzer()
+remediation_agent = RemediationAgent()
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = CURRENT_DIR if os.path.isdir(os.path.join(CURRENT_DIR, "m2-systems")) else os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
@@ -314,7 +316,6 @@ def pin():
 
 @app.route("/api/vision_analyze", methods=["POST"])
 def vision_analyze():
-    # Currently just runs in simulated mode since no camera is attached yet
     core.append_log("Starting Offline Vision LLM analysis...")
     result = vision_agent.analyze_image()
     
@@ -326,5 +327,47 @@ def vision_analyze():
         
     return jsonify(result)
 
+def autonomous_self_healing_loop():
+    """Background thread that runs the Framebuffer Vision AI and remediates automatically (Claim #1 & #2)."""
+    logger.info("Autonomous Self-Healing Loop Started.")
+    while True:
+        time.sleep(60) # Scan every 60 seconds
+        
+        # 1. Vision LLM Framebuffer Scan (Claim #1)
+        result = vision_agent.analyze_image()
+        
+        if result.get("anomaly_detected"):
+            logger.critical(f"[AUTONOMOUS ALERT] UI Crash detected by VLM: {result.get('analysis')}")
+            core.append_log(f"dY\" [AI-VISION] Detected anomaly: {result.get('analysis')}")
+            
+            # 2. Extract logs for context
+            try:
+                logs_out = subprocess.check_output("journalctl -n 50 --no-pager", shell=True, text=True)
+            except:
+                logs_out = "Failed to fetch logs."
+                
+            # 3. Text LLM Generates Patch
+            patch_cmd = remediation_agent.generate_patch_command(logs_out)
+            
+            # 4. Cryptographic Ledger Signing (Claim #2)
+            # The AI's decision is cryptographically signed using the physical Ed25519 hardware key
+            signature = core.signer.sign(patch_cmd.encode('utf-8'))
+            
+            # Log the receipt to the HashChainLedger
+            sig_hex = signature.hex()[:16] + "..."
+            core.append_log(f"dY\" [AI-LEDGER] Ed25519 Signed Patch: {patch_cmd} (Sig: {sig_hex})")
+            logger.info(f"AI Patch Signed: {patch_cmd} -> {sig_hex}")
+            
+            # 5. Execute with 3-strike rollback
+            success = remediation_agent.execute_with_rollback(patch_cmd)
+            if success:
+                core.append_log(f"-? [AI-REMEDIATION] Patch executed successfully.")
+            else:
+                core.append_log(f"dY\" [AI-REMEDIATION] Patch failed.")
+
 if __name__ == "__main__":
+    # Start the autonomous background orchestrator loop
+    healing_thread = threading.Thread(target=autonomous_self_healing_loop, daemon=True)
+    healing_thread.start()
+    
     app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)

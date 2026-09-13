@@ -42,25 +42,24 @@ class VisionAnalyzer:
 
     def analyze_image(self, image_path: str = None) -> dict:
         """
-        Takes a screenshot of the local X11 display and asks the VLM if the GUI has crashed
-        or is showing a black screen.
+        Takes a raw scrape of the physical bare-metal framebuffer (/dev/fb0)
+        and asks the VLM if the GUI has crashed or is showing a black screen.
         """
         screenshot_path = "/tmp/self_healing_screenshot.png"
         
-        # Take a screenshot of the X11 display
-        try:
-            os.system("DISPLAY=:0 scrot " + screenshot_path)
-            if not os.path.exists(screenshot_path):
-                # Fallback if scrot is missing
-                return {
-                    "status": "error",
-                    "analysis": "Could not capture screenshot. Is scrot installed?",
-                    "anomaly_detected": False
-                }
-        except Exception as e:
+        # 1. Try to scrape the bare-metal framebuffer (Claim #1)
+        # Using ffmpeg to read the raw fbdev memory directly
+        res = os.system("sudo ffmpeg -y -f fbdev -i /dev/fb0 -frames:v 1 " + screenshot_path + " 2>/dev/null")
+        
+        # 2. Fallback to X11 screenshot if /dev/fb0 is inaccessible
+        if res != 0 or not os.path.exists(screenshot_path):
+            logger.warning("/dev/fb0 scrape failed, falling back to X11 scrot...")
+            os.system("DISPLAY=:0 scrot -z " + screenshot_path)
+            
+        if not os.path.exists(screenshot_path):
             return {
                 "status": "error",
-                "analysis": f"Screenshot failed: {e}",
+                "analysis": "Could not capture framebuffer or screenshot.",
                 "anomaly_detected": False
             }
 
