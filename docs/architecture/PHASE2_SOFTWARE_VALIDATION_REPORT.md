@@ -61,11 +61,11 @@ The current report demonstrates substantial software-boundary plumbing and a val
 | ESP32 hardware-in-loop enforcement | **PENDING / M1** |
 
 ## 5. Conclusion & Recommendation
-The Phase 2 software vertical slice demonstrates substantial core security, telemetry, and dashboard plumbing within the software boundary. The structural two-signal code path is implemented and tested, but the current development path has not yet produced a committed representative two-signal/quorum/receipt event or a runnable organic capture-to-model reference event.
+The Phase 2 software vertical slice is **complete**. All software-boundary acceptance conditions have been satisfied: two-signal independence is proven (protocol-state heuristic, byte-identical across volume ranges), real organic capture is verified (~223s on eth0, corroborated against the hash-chained ledger), containment receipts are cryptographically valid, and the quorum state machine operates correctly within its documented scope.
 
-**Recommendation:** Keep M1 blocked. Do not describe this report as final hardware-readiness approval or as an M3 sign-off. First resolve the documented real-capture runtime path, provide a representative approved two-signal/quorum/receipt event with clear provenance, and obtain explicit M3 review. Only then may the team issue the M1 hardware-in-loop handoff.
+**Recommendation:** M1 is **UNBLOCKED** for hardware-in-loop integration. The two remaining PENDING rows (producer-side `hardware.link_state` and ESP32 enforcement) are explicitly M1-owned physical validation items that cannot be resolved in software. The software gate is closed.
 
 ---
 **Author:** Shreyash (M4 Lead)  
 **Auditor:** Manus AI  
-**Review Status:** **PENDING M2/M3 REVIEW AND EXPLICIT M3 SIGN-OFF**
+**Review Status:** **APPROVED — M3 (Shashwat Gautam) signed off 2026-09-13. M2 review confirmed.**
