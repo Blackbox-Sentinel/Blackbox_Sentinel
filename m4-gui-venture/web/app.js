@@ -389,6 +389,9 @@ function triggerAirgapLockdown(reason, score) {
     document.getElementById("hw-relay-tag").className = "badge-status text-red";
     document.getElementById("qs-defense-status").textContent = "AIR-GAP ACTIVE";
 
+    // Physically trigger the ESP32 hardware relay
+    fetch("/api/hardware_check", { method: "POST" }).catch(e => console.log(e));
+
     // Add Forensic Block
     const block = addLedgerBlock("threat_containment", {
         reason: reason,
