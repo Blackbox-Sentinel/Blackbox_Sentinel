@@ -49,9 +49,7 @@ from m3_security_contracts import ContainmentReceiptService, Ed25519ReceiptSigne
 from quorum_state import QuorumState
 import base64
 
-app = Flask(__name__)
-CORS(app)
-
+# Remove the second Flask instantiation
 class SentinelCore:
     def _apply_containment_logic(self, incident_id, score, pkt_label, pkt=None):
         sig_a = EvidenceSignal(
