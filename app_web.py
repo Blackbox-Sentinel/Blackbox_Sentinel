@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.join(PROJECT_ROOT, "m2-systems", "sim"))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "common"))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, "m4-gui-venture", "src"))
 
-os.environ["SENTINEL_HARDWARE"] = "sim"
+os.environ["SENTINEL_HARDWARE"] = "hw"
 
 from hal import get_hal
 from predict import AnomalyScorer
@@ -119,7 +119,7 @@ class SentinelCore:
         self.master_aes_key = os.urandom(32)
 
         self.hal = get_hal(
-            mode="sim",
+            mode="hw",
             on_tamper_callback=self._handle_tamper_event,
             on_relay_change=self._handle_relay_change,
             node_id=self.node_id
@@ -260,6 +260,11 @@ def telemetry():
         state_str = "🚨 LOCKDOWN (LINE CUT)"
         state_color = "#FF3366"
         
+    # Hardware Telemetry
+    tamper_state = "BREACHED" if core.hal.tamper.is_tampered() else "SECURE"
+    link_state = "HEALTHY" if getattr(core.hal.mesh, "ser", None) else "UNKNOWN"
+    relay_verified = True if core.hal.relay.get_state() in ["ENGAGED", "ISOLATED"] else False
+        
     return jsonify({
         "packets": core.packet_count,
         "anomalies": core.anomaly_count,
@@ -269,7 +274,10 @@ def telemetry():
         "state_color": state_color,
         "logs": list(core._event_log),
         "rate_history": list(core.packet_rate_history),
-        "score_history": list(core.anomaly_score_history)
+        "score_history": list(core.anomaly_score_history),
+        "link_state": link_state,
+        "tamper_state": tamper_state,
+        "relay_verified": relay_verified
     })
 
 @app.route("/api/inject", methods=["POST"])
