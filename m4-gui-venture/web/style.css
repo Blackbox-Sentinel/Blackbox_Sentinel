@@ -45,14 +45,14 @@
 }
 
 html, body {
+    margin: 0;
+    padding: 0;
     width: 100vw;
     height: 100vh;
     overflow: hidden;
-    background-color: #0c0814;
-    font-family: var(--font-ubuntu);
-    color: #ffffff;
-    transform: rotate(180deg);
-    transform-origin: center;
+    background-color: var(--yaru-dark);
+    font-family: 'Ubuntu', sans-serif;
+    color: var(--yaru-text);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
