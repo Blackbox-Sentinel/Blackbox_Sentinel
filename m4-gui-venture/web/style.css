@@ -51,6 +51,8 @@ html, body {
     background-color: #0c0814;
     font-family: var(--font-ubuntu);
     color: #ffffff;
+    transform: rotate(180deg);
+    transform-origin: center;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
