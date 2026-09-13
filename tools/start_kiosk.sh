@@ -14,7 +14,7 @@ FLASK_PID=$!
 sleep 5
 
 # Launch Chromium in Kiosk mode AS SENTINEL, inside a dedicated X11 Server running AS ROOT
-xinit /usr/bin/su - sentinel -c "export DISPLAY=:0 && /usr/bin/chromium-browser --noerrdialogs --disable-infobars --start-fullscreen --kiosk --force-device-scale-factor=0.6 http://localhost:5000/" -- :0 -s 0 dpms -nocursor vt7 &
+xinit /usr/bin/su - sentinel -c "export DISPLAY=:0 && /usr/bin/chromium-browser --noerrdialogs --disable-infobars --start-fullscreen --kiosk --force-device-scale-factor=0.6 http://localhost:5000/" -- :0 -ac -s 0 dpms -nocursor vt7 &
 XINIT_PID=$!
 
 # If either the backend or the frontend crashes, exit so Systemd can restart everything

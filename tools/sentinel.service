@@ -6,6 +6,11 @@ Wants=graphical.target
 [Service]
 Type=simple
 WorkingDirectory=/home/sentinel/Blackbox_Sentinel
+StandardInput=tty
+StandardOutput=journal
+TTYPath=/dev/tty7
+TTYReset=yes
+TTYVHangup=yes
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/sentinel/.Xauthority"
 ExecStart=/bin/bash /home/sentinel/Blackbox_Sentinel/tools/start_kiosk.sh
