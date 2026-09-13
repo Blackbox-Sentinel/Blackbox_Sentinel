@@ -18,7 +18,7 @@ from flask_cors import CORS
 from ml.vision_agent import VisionAnalyzer
 from ml.remediation_agent import RemediationAgent
 
-app = Flask(__name__, template_folder="m4-gui-venture/web", static_folder="m4-gui-venture/web")
+app = Flask(__name__, template_folder="m4-gui-venture/web", static_folder="m4-gui-venture/web", static_url_path='')
 app.config['SECRET_KEY'] = 'edge-sentinel-vault-key-2026'
 CORS(app)
 
