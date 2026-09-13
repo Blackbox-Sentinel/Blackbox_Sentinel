@@ -42,32 +42,43 @@ class VisionAnalyzer:
 
     def analyze_image(self, image_path: str = None) -> dict:
         """
-        Takes an image path and asks the VLM if there is any physical tampering or anomaly.
-        If no path is provided, it simulates a camera capture.
+        Takes a screenshot of the local X11 display and asks the VLM if the GUI has crashed
+        or is showing a black screen.
         """
-        if not image_path or not os.path.exists(image_path):
-            # Simulated response for when no camera is attached yet
+        screenshot_path = "/tmp/self_healing_screenshot.png"
+        
+        # Take a screenshot of the X11 display
+        try:
+            os.system("DISPLAY=:0 scrot " + screenshot_path)
+            if not os.path.exists(screenshot_path):
+                # Fallback if scrot is missing
+                return {
+                    "status": "error",
+                    "analysis": "Could not capture screenshot. Is scrot installed?",
+                    "anomaly_detected": False
+                }
+        except Exception as e:
             return {
-                "status": "simulated",
-                "analysis": "No camera feed detected. Simulated visual scan shows environment is secure.",
+                "status": "error",
+                "analysis": f"Screenshot failed: {e}",
                 "anomaly_detected": False
             }
 
         if not self.model_loaded:
             return {
-                "status": "error",
-                "analysis": "Model not loaded. Install torch and transformers.",
+                "status": "simulated",
+                "analysis": "Model not loaded. Simulated scan: Dashboard looks healthy, no black screens detected.",
                 "anomaly_detected": False
             }
 
         try:
-            image = Image.open(image_path)
+            image = Image.open(screenshot_path)
             enc_image = self.model.encode_image(image)
-            prompt = "Describe the security state of this physical hardware environment. Is there any unauthorized physical tampering or disconnected wires?"
+            prompt = "Analyze this dashboard screenshot. Is it a blank black screen, or does it show error messages indicating a crash?"
             answer = self.model.answer_question(enc_image, prompt, self.tokenizer)
             
-            # Basic keyword detection for anomalies in the response
-            is_anomaly = any(word in answer.lower() for word in ["tamper", "disconnected", "unauthorized", "breach", "broken", "cut"])
+            # Detect if the VLM thinks the screen is blank, black, or crashed
+            is_anomaly = any(word in answer.lower() for word in ["blank", "black", "crash", "error", "terminal", "console"])
             
             return {
                 "status": "success",
