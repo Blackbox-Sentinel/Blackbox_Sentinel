@@ -1,0 +1,20 @@
+[Unit]
+Description=BlackBox Sentinel Bridge — Network Monitor Pipeline (M2)
+# This is the M2 bridge/network-monitor service. The M1 kiosk+orchestrator
+# is in tools/sentinel.service (installed as sentinel.service on the Pi).
+# This unit runs the pipeline independently and is named sentinel-bridge.
+After=network.target sentinel.service
+Wants=sentinel.service
+
+[Service]
+Type=simple
+User=sentinel
+WorkingDirectory=/opt/blackbox-sentinel
+ExecStart=/opt/blackbox-sentinel/venv/bin/python /opt/blackbox-sentinel/sentinel_pipeline.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

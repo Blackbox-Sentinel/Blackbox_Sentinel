@@ -42,20 +42,26 @@ class VisionAnalyzer:
 
     def analyze_image(self, image_path: str = None) -> dict:
         """
-        Takes a raw scrape of the physical bare-metal framebuffer (/dev/fb0)
-        and asks the VLM if the GUI has crashed or is showing a black screen.
+        Takes a screenshot and asks the VLM if the GUI has crashed or is showing a black screen.
+        In headless mode (no DISPLAY), skips screen capture and returns no-display status.
         """
         screenshot_path = "/tmp/self_healing_screenshot.png"
-        
-        # 1. Try to scrape the bare-metal framebuffer (Claim #1)
-        # Using ffmpeg to read the raw fbdev memory directly
+
+        # Headless mode: no display attached, skip all screen capture
+        if not os.environ.get("DISPLAY"):
+            return {
+                "status": "headless",
+                "analysis": "Running headless — no display attached. UI accessible via browser at port 5000.",
+                "anomaly_detected": False
+            }
+
+        # 1. Try bare-metal framebuffer (/dev/fb0) via ffmpeg
         res = os.system("sudo ffmpeg -y -f fbdev -i /dev/fb0 -frames:v 1 " + screenshot_path + " 2>/dev/null")
-        
-        # 2. Fallback to X11 screenshot if /dev/fb0 is inaccessible
+
+        # 2. Fallback to X11 scrot
         if res != 0 or not os.path.exists(screenshot_path):
-            logger.warning("/dev/fb0 scrape failed, falling back to X11 scrot...")
             os.system("DISPLAY=:0 scrot -z " + screenshot_path)
-            
+
         if not os.path.exists(screenshot_path):
             return {
                 "status": "error",
