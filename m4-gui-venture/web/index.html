@@ -152,6 +152,13 @@
                         <div class="qs-tile-sub">Test ESP32 Relay Isolation</div>
                     </div>
                 </div>
+                <div class="qs-tile" onclick="triggerRawRelay()">
+                    <div class="qs-tile-icon">⚡</div>
+                    <div class="qs-tile-text">
+                        <div class="qs-tile-title">Relay Module</div>
+                        <div class="qs-tile-sub">Trigger Physical GPIO</div>
+                    </div>
+                </div>
             </div>
             <div class="qs-slider-group">
                 <div class="qs-slider-row">
@@ -639,7 +646,7 @@
     <!-- GNOME Notification Toast -->
     <div id="gnome-toast" class="gnome-toast"></div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=4"></script>
     <script>
         // Telemetry Polling
         setInterval(async () => {
@@ -660,6 +667,16 @@
                 alert(data.message || "Hardware triggered");
             } catch (e) {
                 alert("Error triggering hardware");
+            }
+        }
+
+        async function triggerRawRelay() {
+            try {
+                let res = await fetch("/api/relay_trigger", { method: "POST" });
+                let data = await res.json();
+                alert(data.message || "Relay toggled via GPIO");
+            } catch (e) {
+                alert("Error triggering relay GPIO");
             }
         }
     </script>

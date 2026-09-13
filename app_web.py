@@ -294,6 +294,30 @@ def hardware_check():
     core.hal.led.blink(0.5)
     return jsonify({"status": "ok", "message": "Hardware check executed"})
 
+@app.route("/api/relay_trigger", methods=["POST"])
+def relay_trigger():
+    core.append_log("TEST: Triggering Raw GPIO Relay (Pins 32,33 -> ESP32 19,20)")
+    try:
+        import RPi.GPIO as GPIO
+        import time
+        GPIO.setwarnings(False)
+        GPIO.setmode(GPIO.BCM)
+        # Pin 32 is BCM 12, Pin 33 is BCM 13
+        GPIO.setup(12, GPIO.OUT)
+        GPIO.setup(13, GPIO.OUT)
+        # Pulse them high then low
+        GPIO.output(12, GPIO.HIGH)
+        GPIO.output(13, GPIO.HIGH)
+        time.sleep(0.5)
+        GPIO.output(12, GPIO.LOW)
+        GPIO.output(13, GPIO.LOW)
+        msg = "Relay toggled successfully via Physical GPIO 12/13 (Pins 32/33)"
+    except Exception as e:
+        core.append_log(f"GPIO Error: {str(e)}")
+        msg = f"Simulated relay toggle (RPi.GPIO not available): {str(e)}"
+    
+    return jsonify({"status": "ok", "message": msg})
+
 @app.route("/api/system_stats")
 def system_stats():
     cpu_percent = psutil.cpu_percent(interval=None)
