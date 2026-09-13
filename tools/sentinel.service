@@ -5,14 +5,7 @@ Wants=graphical.target
 
 [Service]
 Type=simple
-User=sentinel
-Group=sentinel
 WorkingDirectory=/home/sentinel/Blackbox_Sentinel
-PAMName=login
-StandardInput=tty
-TTYPath=/dev/tty7
-TTYReset=yes
-TTYVHangup=yes
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/sentinel/.Xauthority"
 ExecStart=/bin/bash /home/sentinel/Blackbox_Sentinel/tools/start_kiosk.sh
@@ -23,7 +16,6 @@ StartLimitIntervalSec=600
 StartLimitBurst=50
 
 # Security Hardening for the daemon
-NoNewPrivileges=true
 ProtectSystem=full
 ProtectHome=read-only
 ReadWritePaths=/home/sentinel/Blackbox_Sentinel/logs_and_data /home/sentinel/Blackbox_Sentinel/m3-ml-ledger /tmp /home/sentinel/.config/chromium /home/sentinel/.cache /home/sentinel/.pki /home/sentinel/.local
