@@ -49,7 +49,7 @@ def get_hal(
 
     print(f"[HAL] Initializing Hardware Abstraction Layer in mode: [{mode.upper()}]")
 
-    if mode == "real":
+    if mode in ("real", "hw"):
         try:
             from .drivers_real import RealRelay, RealTamper, RealLED, RealCellular, RealMesh
             

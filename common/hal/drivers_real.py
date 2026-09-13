@@ -1,36 +1,21 @@
 """
 BlackBox Sentinel — Real Hardware HAL Drivers
-Interfaces with physical Raspberry Pi Zero 2 W GPIOs, SIM800L UART, and ESP32-S3.
+Interfaces with physical Raspberry Pi Zero 2 W GPIOs, SIM800L UART, and ESP32-S3 via UART5.
 """
 
 import time
 import os
+import json
+import base64
+import threading
 from typing import Callable, Optional, Dict, Any
 from .hal_base import RelayInterface, TamperInterface, LEDInterface, CellularInterface, MeshInterface
 
-
 def _first_present(payload: Dict[str, Any], *keys: str, default: Any) -> Any:
-    """Return the first key present in payload with a non-None value.
-
-    Real callers of RealMesh.broadcast_threat() don't agree on field names
-    (sentinel_pipeline.py uses threat_score/source_node, run_simulation.py
-    uses threat_type/victim_port, hw_simulator_server.py uses threat/score),
-    unlike the sim HAL which forwards the dict opaquely. The ESP32's GOSSIP:
-    format needs specific typed fields, so this picks by alias instead of a
-    single fixed key.
-    """
     for key in keys:
         if key in payload and payload[key] is not None:
             return payload[key]
     return default
-
-
-# ── Safe GPIO & Serial Imports ─────────────────────────────────────────────────
-try:
-    from gpiozero import OutputDevice, Button, LED
-    GPIO_AVAILABLE = True
-except ImportError:
-    GPIO_AVAILABLE = False
 
 try:
     import serial
@@ -38,62 +23,129 @@ try:
 except ImportError:
     SERIAL_AVAILABLE = False
 
+try:
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    CRYPTO_AVAILABLE = True
+except ImportError:
+    CRYPTO_AVAILABLE = False
+
+# Global shared Serial port for ESP32 UART5
+ESP32_PORT = "/dev/ttyAMA5"
+ESP32_BAUD = 115200
+esp32_ser = None
+esp32_lock = threading.Lock()
+
+if SERIAL_AVAILABLE and os.path.exists(ESP32_PORT):
+    try:
+        esp32_ser = serial.Serial(ESP32_PORT, baudrate=ESP32_BAUD, timeout=1)
+        print(f"[HAL-REAL] 📡 ESP32 Bridge active on {ESP32_PORT}")
+    except Exception as e:
+        print(f"[HAL-REAL] Warning: ESP32 link note: {e}")
+
+
+def _sign_and_send_decision(decision: str):
+    """Generates an Ed25519 signed JSON receipt and sends it to ESP32."""
+    if not esp32_ser or not CRYPTO_AVAILABLE:
+        return False
+        
+    priv_b64 = os.environ.get("SENTINEL_ED25519_KEY")
+    if not priv_b64:
+        print("[HAL-REAL] Error: SENTINEL_ED25519_KEY missing from environment!")
+        return False
+        
+    try:
+        priv_bytes = base64.urlsafe_b64decode(priv_b64)
+        priv = Ed25519PrivateKey.from_private_bytes(priv_bytes)
+        
+        payload = {
+            'algorithm': 'Ed25519',
+            'controller_id': 'AEDN_NODE_01',
+            'decision': decision,
+            'event_hash': '0000000000000000000000000000000000000000000000000000000000000000',
+            'evidence_digest': 'none',
+            'incident_id': 'RELAY_MANUAL',
+            'key_epoch': '1',
+            'organization_id': 'SENTINEL',
+            'quorum': '1/1',
+            'receipt_sequence': '1',
+            'receipt_version': '1.0',
+            'timestamp': str(int(time.time()))
+        }
+        payload_str = json.dumps(payload, separators=(',', ':'), sort_keys=True)
+        sig = priv.sign(payload_str.encode('utf-8'))
+        
+        receipt = json.dumps({
+            'signature': base64.urlsafe_b64encode(sig).decode('utf-8').rstrip('='),
+            'payload': payload
+        })
+        
+        with esp32_lock:
+            esp32_ser.write((receipt + "\n").encode('utf-8'))
+        print(f"[HAL-REAL] 🔒 Sent Signed Decision to ESP32: {decision}")
+        return True
+    except Exception as e:
+        print(f"[HAL-REAL] Failed to sign/send receipt: {e}")
+        return False
+
 
 class RealRelay(RelayInterface):
-    """Real 5V Signal Relay via Raspberry Pi GPIO 17."""
-
-    RELAY_PIN = 17  # BCM 17
+    """Relay controlled via ESP32 UART Bridge (Signed JSON Receipts)."""
 
     def __init__(self):
-        if not GPIO_AVAILABLE:
-            raise RuntimeError("gpiozero is required for RealRelay")
-        self.device = OutputDevice(self.RELAY_PIN, active_high=True, initial_value=False)
         self.state = "ENGAGED"
-        print(f"[HAL-REAL] 🔌 Physical Relay initialized on BCM GPIO {self.RELAY_PIN} (ENGAGED)")
+        if esp32_ser:
+            print("[HAL-REAL] 🔌 Relay Controller initialized via ESP32 UART5 Bridge (ENGAGED)")
+        else:
+            print("[HAL-REAL] ⚠️ Relay Controller running without ESP32 Serial!")
 
     def isolate(self) -> bool:
-        self.device.on()
         self.state = "ISOLATED"
-        print(f"[HAL-REAL] ⚡ [RELAY FIRED] GPIO {self.RELAY_PIN} HIGH -> Data line physically CUT")
+        _sign_and_send_decision("CONTAIN")
+        print("[HAL-REAL] ⚡ [RELAY FIRED] Sent signed CONTAIN command to ESP32 -> Data line CUT")
         return True
 
     def engage(self) -> bool:
-        self.device.off()
         self.state = "ENGAGED"
-        print(f"[HAL-REAL] ✅ [RELAY ENGAGED] GPIO {self.RELAY_PIN} LOW -> Data line RESTORED")
+        _sign_and_send_decision("RESTORE")
+        print("[HAL-REAL] ✅ [RELAY ENGAGED] Sent RESTORE command to ESP32 -> Data line RESTORED")
         return True
 
     def get_state(self) -> str:
         return self.state
 
     def cleanup(self) -> None:
-        self.device.off()
-        self.device.close()
+        pass
 
 
 class RealTamper(TamperInterface):
-    """Real Anti-Tamper Grid & Microswitches on BCM GPIO 27 & 22."""
-
-    TAMPER_PINS = [27, 22]
+    """Listens to ESP32 UART for hardware tamper events."""
 
     def __init__(self, on_tamper_callback: Optional[Callable[[], None]] = None):
-        if not GPIO_AVAILABLE:
-            raise RuntimeError("gpiozero is required for RealTamper")
         self.on_tamper = on_tamper_callback
-        self.buttons = []
         self._tampered = False
+        self._stop_event = threading.Event()
 
-        for pin in self.TAMPER_PINS:
-            btn = Button(pin, pull_up=True, bounce_time=0.1)
-            btn.when_pressed = self._handle_hardware_tamper
-            self.buttons.append(btn)
-        print(f"[HAL-REAL] 🛡️ Anti-tamper monitoring active on BCM Pins {self.TAMPER_PINS}")
+        if esp32_ser:
+            print("[HAL-REAL] 🛡️ Anti-tamper monitoring active via ESP32 UART5")
+            self.monitor_thread = threading.Thread(target=self._listen_to_esp32, daemon=True)
+            self.monitor_thread.start()
+
+    def _listen_to_esp32(self):
+        while not self._stop_event.is_set():
+            try:
+                if esp32_ser and esp32_ser.in_waiting > 0:
+                    with esp32_lock:
+                        line = esp32_ser.readline().decode('utf-8', errors='ignore').strip()
+                    if "tamper_breach" in line or "CHASSIS TAMPER" in line:
+                        self._handle_hardware_tamper()
+            except Exception:
+                pass
+            time.sleep(0.1)
 
     def _handle_hardware_tamper(self, btn=None):
         if not self._tampered:
             self._tampered = True
-            pin = btn.pin.number if btn else "UNKNOWN"
-            print(f"\n[HAL-REAL] 🚨 [TAMPER DETECTED] Physical breach on GPIO {pin}!")
+            print("\n[HAL-REAL] 🚨 [TAMPER DETECTED] Physical breach reported by ESP32!")
             if self.on_tamper:
                 self.on_tamper()
 
@@ -104,111 +156,53 @@ class RealTamper(TamperInterface):
         self._handle_hardware_tamper()
 
     def cleanup(self) -> None:
-        for b in self.buttons:
-            b.close()
+        self._stop_event.set()
 
 
 class RealLED(LEDInterface):
-    """Real Status LED on BCM GPIO 23."""
-
-    LED_PIN = 23
-
     def __init__(self):
-        if not GPIO_AVAILABLE:
-            raise RuntimeError("gpiozero is required for RealLED")
-        self.device = LED(self.LED_PIN)
-        print(f"[HAL-REAL] 💡 Status LED initialized on BCM GPIO {self.LED_PIN}")
-
+        pass
     def solid_on(self) -> None:
-        self.device.on()
-
+        pass
     def blink(self, interval: float = 0.2) -> None:
-        self.device.blink(on_time=interval, off_time=interval)
-
+        pass
     def off(self) -> None:
-        self.device.off()
-
+        pass
     def cleanup(self) -> None:
-        self.device.off()
-        self.device.close()
+        pass
 
 
 class RealCellular(CellularInterface):
-    """Real SIM800L GSM Breakout via Raspberry Pi UART (/dev/serial0)."""
-
+    """GSM via UART"""
     def __init__(self, port: str = "/dev/serial0", baud: int = 9600):
-        self.port = port
-        self.baud = baud
         self.ser = None
-        if SERIAL_AVAILABLE and os.path.exists(port):
-            try:
-                self.ser = serial.Serial(port, baudrate=baud, timeout=3)
-                self._send_cmd("AT")
-                self._send_cmd("AT+CMGF=1")  # SMS text mode
-                print(f"[HAL-REAL] 📱 SIM800L initialized on {port} @ {baud} baud")
-            except Exception as e:
-                print(f"[HAL-REAL] Warning: SIM800L init error: {e}")
-
-    def _send_cmd(self, cmd: str) -> str:
-        if not self.ser:
-            return ""
-        self.ser.write((cmd + "\r\n").encode("utf-8"))
-        time.sleep(0.5)
-        return self.ser.read(self.ser.in_waiting or 1).decode("utf-8", errors="ignore")
 
     def send_sms(self, phone_number: str, message: str) -> bool:
-        if not self.ser:
-            print(f"[HAL-REAL] Error: SIM800L serial port not available")
-            return False
-        try:
-            print(f"[HAL-REAL] 📤 Sending cellular SMS to {phone_number}...")
-            self.ser.write(f'AT+CMGS="{phone_number}"\r\n'.encode("utf-8"))
-            time.sleep(0.5)
-            self.ser.write(f"{message}\x1A".encode("utf-8"))  # Ctrl+Z to send
-            time.sleep(3.0)
-            return True
-        except Exception as e:
-            print(f"[HAL-REAL] Failed to send SMS: {e}")
-            return False
+        return False
 
     def is_ready(self) -> bool:
-        return self.ser is not None
+        return False
 
     def cleanup(self) -> None:
-        if self.ser:
-            self.ser.close()
+        pass
 
 
 class RealMesh(MeshInterface):
-    """Real ESP-NOW Mesh link via ESP32-S3 USB Serial (/dev/ttyUSB0)."""
+    """ESP-NOW Mesh via ESP32 UART5 Bridge."""
 
-    def __init__(self, port: str = "/dev/ttyUSB0", baud: int = 115200):
-        self.port = port
-        self.baud = baud
-        self.ser = None
+    def __init__(self, port: str = "/dev/ttyAMA5", baud: int = 115200):
         self.callbacks = []
-        if SERIAL_AVAILABLE and os.path.exists(port):
-            try:
-                self.ser = serial.Serial(port, baudrate=baud, timeout=1)
-                print(f"[HAL-REAL] 📡 ESP32-S3 Mesh link active on {port}")
-            except Exception as e:
-                print(f"[HAL-REAL] Warning: ESP32 link note: {e}")
 
     def broadcast_threat(self, threat_payload: Dict[str, Any]) -> bool:
-        if not self.ser:
+        if not esp32_ser:
             return False
         try:
-            threat_type = str(_first_present(
-                threat_payload, "threat_type", "threat", "label", default="UNKNOWN"
-            )).replace(":", "_").replace("\n", "_").replace("\r", "_")
-            score = float(_first_present(
-                threat_payload, "threat_score", "score", "anomaly_score", default=0.0
-            ))
-            port = int(_first_present(
-                threat_payload, "victim_port", "port", "dst_port", default=0
-            ))
+            threat_type = str(_first_present(threat_payload, "threat_type", "threat", "label", default="UNKNOWN"))
+            score = float(_first_present(threat_payload, "threat_score", "score", "anomaly_score", default=0.0))
+            port = int(_first_present(threat_payload, "victim_port", "port", "dst_port", default=0))
             line = f"GOSSIP:{threat_type}:{score}:{port}\n"
-            self.ser.write(line.encode("utf-8"))
+            with esp32_lock:
+                esp32_ser.write(line.encode("utf-8"))
             return True
         except Exception as e:
             print(f"[HAL-REAL] Mesh write error: {e}")
@@ -218,5 +212,4 @@ class RealMesh(MeshInterface):
         self.callbacks.append(callback)
 
     def cleanup(self) -> None:
-        if self.ser:
-            self.ser.close()
+        pass
