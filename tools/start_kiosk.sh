@@ -6,12 +6,7 @@ killall -9 python3 chromium-browser chromium xinit Xorg 2>/dev/null || true
 rm -rf /home/sentinel/.config/chromium/Singleton* 2>/dev/null || true
 rm -f /tmp/.X0-lock /tmp/.X1-lock /tmp/.X11-unix/X0 2>/dev/null || true
 
-# Start the Flask Backend in the background AS SENTINEL
-su - sentinel -c "cd /home/sentinel/Blackbox_Sentinel && /usr/bin/python3 app_web.py > /tmp/flask.log 2>&1" &
-FLASK_PID=$!
-
-# Wait for Flask to boot
-sleep 5
+# Host network disabled per user request - only running PyQt6 dashboard natively
 
 # Launch Chromium in Kiosk mode AS SENTINEL, inside a dedicated X11 Server running AS ROOT
 xinit /usr/bin/su - sentinel -c "/bin/bash /home/sentinel/Blackbox_Sentinel/tools/launch_chrome.sh" -- :0 -ac -s 0 dpms -nocursor vt7 > /tmp/xinit.log 2>&1 &
