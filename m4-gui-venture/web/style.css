@@ -47,10 +47,8 @@
 html, body {
     margin: 0;
     padding: 0;
-    width: 800px;
-    height: 533.33px;
-    transform: scale(0.6);
-    transform-origin: top left;
+    width: 100vw;
+    height: 100vh;
     overflow: hidden;
     background-color: var(--yaru-dark-bg);
     font-family: 'Ubuntu', sans-serif;
