@@ -23,7 +23,7 @@ StartLimitBurst=50
 # Security Hardening for the daemon
 ProtectSystem=full
 ProtectHome=read-only
-ReadWritePaths=/home/sentinel/Blackbox_Sentinel/logs_and_data /home/sentinel/Blackbox_Sentinel/m3-ml-ledger /tmp /home/sentinel/.config/chromium /home/sentinel/.cache /home/sentinel/.pki /home/sentinel/.local
+ReadWritePaths=/home/sentinel/Blackbox_Sentinel/logs_and_data /home/sentinel/Blackbox_Sentinel/m3-ml-ledger /tmp /home/sentinel/.config/chromium /home/sentinel/.cache /home/sentinel/.pki /home/sentinel/.local /root/.cache
 
 [Install]
 WantedBy=graphical.target

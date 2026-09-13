@@ -7,7 +7,7 @@ rm -rf /home/sentinel/.config/chromium/Singleton* 2>/dev/null || true
 rm -f /tmp/.X0-lock /tmp/.X1-lock /tmp/.X11-unix/X0 2>/dev/null || true
 
 # Start the Flask Backend in the background AS SENTINEL
-su - sentinel -c "/usr/bin/python3 /home/sentinel/Blackbox_Sentinel/app_web.py" &
+su - sentinel -c "cd /home/sentinel/Blackbox_Sentinel && /usr/bin/python3 app_web.py" &
 FLASK_PID=$!
 
 # Wait for Flask to boot
