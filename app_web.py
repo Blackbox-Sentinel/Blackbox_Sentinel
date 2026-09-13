@@ -26,6 +26,9 @@ CORS(app)
 vision_agent = VisionAnalyzer()
 remediation_agent = RemediationAgent()
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = CURRENT_DIR if os.path.isdir(os.path.join(CURRENT_DIR, "m2-systems")) else os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
 sys.path.insert(0, PROJECT_ROOT)
