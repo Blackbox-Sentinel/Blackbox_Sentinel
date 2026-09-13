@@ -47,13 +47,14 @@
 html, body {
     margin: 0;
     padding: 0;
-    width: 100vw;
-    height: 100vh;
+    width: 800px;
+    height: 533.33px;
+    transform: scale(0.6);
+    transform-origin: top left;
     overflow: hidden;
-    background-color: var(--yaru-dark);
+    background-color: var(--yaru-dark-bg);
     font-family: 'Ubuntu', sans-serif;
-    color: var(--yaru-text);
-    zoom: 0.6;
+    color: #ffffff;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
