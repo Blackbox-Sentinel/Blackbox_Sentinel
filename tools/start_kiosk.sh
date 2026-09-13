@@ -2,7 +2,7 @@
 # BlackBox Sentinel Kiosk Launcher
 
 # Kill existing processes
-killall -9 chromium-browser chromium xinit Xorg 2>/dev/null || true
+killall -9 python3 chromium-browser chromium xinit Xorg 2>/dev/null || true
 rm -rf /home/sentinel/.config/chromium/Singleton* 2>/dev/null || true
 rm -f /tmp/.X0-lock /tmp/.X1-lock /tmp/.X11-unix/X0 2>/dev/null || true
 
