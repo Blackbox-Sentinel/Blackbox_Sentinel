@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=480, height=320, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#0b1016">
+  <title>Blackbox Sentinel — Field Desk</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='sentinel.css') }}">
+</head>
+<body>
+  <main class="console" aria-label="Blackbox Sentinel Field Desk">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">B</span><span><strong>BLACKBOX</strong><small>FIELD DESK</small></span></div>
+      <div class="node"><span class="status-dot" id="status-dot"></span><span id="node-state">CONNECTING</span><small>AEDN-RACK-01</small></div>
+    </header>
+
+    <section class="workspace">
+      <aside class="rail" aria-label="Main navigation">
+        <button class="nav-btn active" data-view="watch"><span class="nav-glyph">◌</span><small>WATCH</small></button>
+        <button class="nav-btn" data-view="signals"><span class="nav-glyph">⌁</span><small>SIGNALS</small></button>
+        <button class="nav-btn" data-view="actions"><span class="nav-glyph">+</span><small>ACTIONS</small></button>
+        <button class="nav-btn" data-view="journal"><span class="nav-glyph">≡</span><small>JOURNAL</small></button>
+        <button class="nav-btn" data-view="health"><span class="nav-glyph">◇</span><small>HEALTH</small></button>
+      </aside>
+
+      <section class="content">
+        <div class="view view-watch active" data-panel="watch">
+          <div class="eyebrow">LIVE / EDGE OBSERVATION</div>
+          <div class="hero-row"><div><h1 id="hero-state">CALIBRATING</h1><p id="hero-copy">Building a trusted baseline before decisions.</p></div><div class="signal-ring" id="signal-ring"><span id="ring-value">0</span><small>SCORE</small></div></div>
+          <div class="watch-grid">
+            <div class="metric-card"><small>PACKETS INLINE</small><strong id="metric-packets">0</strong><span>observed</span></div>
+            <div class="metric-card"><small>ANOMALIES</small><strong id="metric-anomalies">0</strong><span>contained</span></div>
+            <div class="metric-card"><small>LEDGER BLOCKS</small><strong id="metric-blocks">0</strong><span>append-only</span></div>
+            <div class="metric-card"><small>UPTIME</small><strong id="metric-uptime">00:00:00</strong><span>local session</span></div>
+          </div>
+          <div class="watch-note"><span class="note-line"></span><span id="watch-note">Evidence first; containment second.</span></div>
+        </div>
+
+        <div class="view" data-panel="signals">
+          <div class="eyebrow">SIGNAL ROOM / LAST 40 SAMPLES</div>
+          <div class="panel-title"><h2>Traffic pressure</h2><span class="legend"><i class="cyan"></i>rate <i class="red"></i>score</span></div>
+          <canvas id="signal-chart" width="360" height="160" aria-label="Packet rate and anomaly score graph"></canvas>
+          <div class="signal-readout"><span>RATE <b id="rate-now">0.0</b> pkt/s</span><span>SCORE <b id="score-now">0.00</b></span></div>
+        </div>
+
+        <div class="view" data-panel="actions">
+          <div class="eyebrow">CONTAINMENT DESK / CONTROLLED ACTIONS</div>
+          <div class="action-stack">
+            <button class="action-btn amber" data-inject="EXFILTRATION"><b>Simulate exfiltration</b><small>test the two-signal boundary</small></button>
+            <button class="action-btn orange" data-inject="SYN_FLOOD"><b>Simulate SYN flood</b><small>test packet-rate pressure</small></button>
+            <button class="action-btn red" id="tamper-btn"><b>Open casing signal</b><small>exercise the tamper path</small></button>
+            <button class="action-btn green" id="pin-btn"><b>PIN recovery</b><small>restore the line after authorization</small></button>
+          </div>
+          <p class="caution">Simulation controls are local and remain subject to the trusted controller.</p>
+        </div>
+
+        <div class="view" data-panel="journal">
+          <div class="eyebrow">FIELD JOURNAL / APPEND-ONLY VIEW</div>
+          <div class="journal" id="journal"><div class="empty">Waiting for the first event…</div></div>
+        </div>
+
+        <div class="view" data-panel="health">
+          <div class="eyebrow">NODE HEALTH / TRUSTED PATH</div>
+          <div class="health-list">
+            <div><span>FLASK CORE</span><b class="ok">LOCAL</b></div>
+            <div><span>UART5</span><b class="ok">/dev/ttyAMA5</b></div>
+            <div><span>RECEIPT</span><b class="ok">ED25519 · 12 FIELDS</b></div>
+            <div><span>LEDGER</span><b class="ok" id="health-ledger">0 BLOCKS</b></div>
+            <div><span>RELAY</span><b id="health-relay">MONITORING</b></div>
+          </div>
+          <div class="health-foot">The interface reports state. The controller decides containment.</div>
+        </div>
+      </section>
+    </section>
+
+    <footer class="footer"><span id="connection-label">LOCAL LINK / CONNECTING</span><span id="clock">--:--:--</span></footer>
+  </main>
+
+  <dialog id="pin-dialog" class="pin-dialog"><form method="dialog" id="pin-form"><div class="eyebrow">AUTHORIZED RECOVERY</div><h2>Enter PIN</h2><input id="pin-input" inputmode="numeric" pattern="[0-9]*" maxlength="8" type="password" autocomplete="off" autofocus><div class="pin-actions"><button value="cancel" class="quiet">CANCEL</button><button value="submit" class="confirm">AUTHORIZE</button></div><p id="pin-result"></p></form></dialog>
+  <div id="toast" class="toast" role="status"></div>
+  <script src="{{ url_for('static', filename='sentinel.js') }}"></script>
+</body>
+</html>
