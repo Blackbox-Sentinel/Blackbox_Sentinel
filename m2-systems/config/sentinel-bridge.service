@@ -9,8 +9,8 @@ Wants=sentinel.service
 [Service]
 Type=simple
 User=sentinel
-WorkingDirectory=/opt/blackbox-sentinel
-ExecStart=/opt/blackbox-sentinel/venv/bin/python /opt/blackbox-sentinel/sentinel_pipeline.py
+WorkingDirectory=/home/sentinel/Blackbox_Sentinel
+ExecStart=/usr/bin/python3 /home/sentinel/Blackbox_Sentinel/sentinel_pipeline.py
 Restart=always
 RestartSec=5
 StandardOutput=journal
