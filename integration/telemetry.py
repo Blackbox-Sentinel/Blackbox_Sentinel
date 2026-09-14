@@ -92,6 +92,9 @@ class NormalizedTelemetry:
         """Parse a producer mapping while ignoring future unknown fields."""
         fields = cls.__dataclass_fields__
         data = {key: value[key] for key in fields if key in value}
+        # Provide defaults for required fields that older JSONL files may be missing
+        data.setdefault("event_id", value.get("id", "unknown"))
+        data.setdefault("event_type", value.get("type", "telemetry"))
         return cls(**data)
 
     @classmethod
