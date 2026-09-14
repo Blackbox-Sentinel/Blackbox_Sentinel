@@ -12,7 +12,7 @@ sleep 1
 # For a 270° rotated display: swap axes and invert X
 # Matrix: [0, -1, 1,  1, 0, 0,  0, 0, 1]
 TOUCH_DEVICE="ADS7846 Touchscreen"
-xinput set-prop 'ADS7846 Touchscreen' 'Coordinate Transformation Matrix' -1 0 1 0 -1 1 0 0 1 2>/dev/null || true
+xinput set-prop 'ADS7846 Touchscreen' 'Coordinate Transformation Matrix' 0 1 0 -1 0 1 0 0 1 2>/dev/null || true
 xinput set-prop "$TOUCH_DEVICE" "libinput Calibration Matrix" 0 -1 1 1 0 0 0 0 1 2>/dev/null || true
 
 # Launch dashboard
