@@ -13,7 +13,7 @@ TTYReset=yes
 TTYVHangup=yes
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/sentinel/.Xauthority"
-Environment=SENTINEL_ED25519_KEY=elKsXzfzH5qpZyxh25x9uCVy8VfRAc3BAqDiPc6B2Go=
+Environment=SENTINEL_ED25519_KEY=SyYYabQxV86glBwcWjIafAYBQjvd8HqIcW0mQDY9hJc
 ExecStart=/bin/bash /home/sentinel/Blackbox_Sentinel/tools/start_kiosk.sh
 Restart=always
 RestartSec=5

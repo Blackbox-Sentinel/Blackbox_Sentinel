@@ -68,7 +68,7 @@
 |------|-------|
 | Pi IP | 10.27.79.132 |
 | UI URL | http://10.27.79.132:5000 |
-| SENTINEL_ED25519_KEY | elKsXzfzH5qpZyxh25x9uCVy8VfRAc3BAqDiPc6B2Go |
+| SENTINEL_ED25519_KEY | SyYYabQxV86glBwcWjIafAYBQjvd8HqIcW0mQDY9hJc |
 | ESP32 public key (b64url) | *<See TRUSTED_PUB_KEY in blackbox_sentinel.ino>* |
 | UART device | `/dev/ttyAMA5` |
 | Pi TX pin (BCM) | GPIO 12 |
