@@ -6,7 +6,7 @@ No ledger dependency needed.
 
 Run on Pi:
   cd /home/sentinel/Blackbox_Sentinel
-  SENTINEL_ED25519_KEY=pTzAdlRSVMXTi2PNIXM1BiONgTEHAxyea2wxPEoR-0Q python3 /tmp/trigger_relay.py
+  SENTINEL_ED25519_KEY=<your_private_key> python3 /tmp/trigger_relay.py
 """
 import sys
 import os
@@ -44,7 +44,7 @@ print("\n2. Signing containment receipt...")
 priv_key_b64 = os.environ.get("SENTINEL_ED25519_KEY")
 if not priv_key_b64:
     print("   ❌ SENTINEL_ED25519_KEY not set!")
-    print("   Run: SENTINEL_ED25519_KEY=pTzAdlRSVMXTi2PNIXM1BiONgTEHAxyea2wxPEoR-0Q python3 /tmp/trigger_relay.py")
+    print("   Run: SENTINEL_ED25519_KEY=<your_private_key> python3 /tmp/trigger_relay.py")
     s.close()
     sys.exit(1)
 
