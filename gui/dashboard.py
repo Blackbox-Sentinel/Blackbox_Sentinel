@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QLabel, QVBoxLayout, 
+                             QWidget, QTextEdit, QPushButton, QInputDialog, QMessageBox)
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -63,13 +65,9 @@ class Dashboard(QMainWindow):
         self.status_label.setStyleSheet("font-size: 15px; color: #24557a; font-weight: bold;")
         layout.addWidget(self.status_label, 0, 0, 1, 2)
 
-        self.telemetry_label = QLabel("PKTS: 0   FEATS: 0   ALERTS: 0")
-        self.telemetry_label.setStyleSheet("font-size: 10px; color: #1f2937; font-weight: bold;")
+        self.telemetry_label = QLabel("PKTS: 0   ALERTS: 0")
+        self.telemetry_label.setStyleSheet("font-size: 11px; font-weight: bold;")
         layout.addWidget(self.telemetry_label, 0, 2, 1, 2)
-        
-        self.synthetic_label = QLabel("DATA: MECHANISM VERIFIED (SYNTHETIC CONTENT)")
-        self.synthetic_label.setStyleSheet("font-size: 8px; color: #b91c1c; font-weight: bold;")
-        layout.addWidget(self.synthetic_label, 8, 0, 1, 4)
 
         self.relay_label = QLabel("RELAY: UNKNOWN")
         self.tamper_label = QLabel("TAMPER: UNKNOWN")
@@ -90,13 +88,13 @@ class Dashboard(QMainWindow):
             ),
             start=1,
         ):
-            widget.setStyleSheet("font-size: 9px; color: #1f2937; font-weight: bold;")
+            widget.setStyleSheet("font-size: 9px; font-weight: bold;")
             layout.addWidget(widget, row, 0, 1, 4)
 
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
-        self.log_box.setStyleSheet("font-size: 8px; color: #111827; background: #ffffff;")
-        layout.addWidget(self.log_box, 9, 0, 1, 4)
+        self.log_box.setStyleSheet("font-size: 8px;")
+        layout.addWidget(self.log_box, 8, 0, 1, 4)
 
         self.attack_btn = QPushButton("ATTACK")
         self.audit_btn = QPushButton("AUDIT")
@@ -109,15 +107,12 @@ class Dashboard(QMainWindow):
         for button in (self.attack_btn, self.audit_btn, self.pin_btn, self.refresh_btn):
             button.setMinimumHeight(34)
             button.setStyleSheet("font-size: 9px; font-weight: bold; padding: 4px;")
-        layout.addWidget(self.attack_btn, 10, 0)
-        layout.addWidget(self.audit_btn, 10, 1)
-        layout.addWidget(self.pin_btn, 10, 2)
-        layout.addWidget(self.refresh_btn, 10, 3)
+        layout.addWidget(self.attack_btn, 9, 0)
+        layout.addWidget(self.audit_btn, 9, 1)
+        layout.addWidget(self.pin_btn, 9, 2)
+        layout.addWidget(self.refresh_btn, 9, 3)
 
-        container.setStyleSheet(
-            "QWidget { background: #f3f5f7; } "
-            "QPushButton { color: #111827; background: #e5e7eb; border: 1px solid #9ca3af; }"
-        )
+        container.setStyleSheet("QWidget { background: #f3f5f7; }")
         self.setCentralWidget(container)
 
     def _log(self, message: str) -> None:
@@ -138,17 +133,11 @@ class Dashboard(QMainWindow):
             "TAMPERED",
             "RECOVERY",
         }
-        # Display real feature count if available
-        feature_count = 0
-        if telemetry.signals:
-            details = telemetry.signals[0].get("details", {})
-            feature_count = details.get("feature_count", 0)
-            
-        self.telemetry_label.setText(f"PKTS: {telemetry.packet_count}   FEATS: {feature_count}   ALERTS: {telemetry.alert_count}")
+        self.telemetry_label.setText(f"PKTS: {telemetry.packet_count}   ALERTS: {telemetry.alert_count}")
 
         state = telemetry.controller_state
         state_color = "#008a3b" if state in {"ARMED", "SAFE"} else "#c00020" if self.is_locked else "#b36b00"
-        self.status_label.setText(f"CONTROLLER: {state} | EVENT: {telemetry.event_type.upper()}")
+        self.status_label.setText(f"CONTROLLER: {state} | EVENT: {telemetry.status.upper()}")
         self.status_label.setStyleSheet(f"font-size: 13px; color: {state_color}; font-weight: bold;")
 
         relay_ack = "ACK" if telemetry.relay_acknowledged else "NO ACK"
@@ -177,9 +166,9 @@ class Dashboard(QMainWindow):
         self.recovery_label.setText(f"RECOVERY: {telemetry.recovery_state}")
 
         if previous_id != telemetry.event_id:
-            note = telemetry.notes or telemetry.rejection_reason or ""
+            note = telemetry.notes or telemetry.rejection_reason or telemetry.event_type
             self._log(
-                f"{telemetry.event_type.upper()}: {note} "
+                f"{telemetry.status.upper()}: {note} "
                 f"(seq={telemetry.transport_sequence or '-'}, auth={telemetry.transport_auth})"
             )
 
@@ -226,7 +215,7 @@ def main() -> None:
         "--telemetry-file",
         type=Path,
         default=None,
-        help="JSONL file emitted by the Phase 2 pipeline (e.g., m3-ml-ledger/data/phase2_telemetry_real_m2_m3.jsonl)",
+        help="JSONL file emitted by integration/phase2_vertical_slice.py",
     )
     args = parser.parse_args()
     start_gui(args.telemetry_file)
