@@ -228,10 +228,22 @@ class Dashboard(QMainWindow):
         self._log("⚡ Triggering relay via UART5...")
         script = str(ROOT / "tools" / "trigger_relay.py")
         env = os.environ.copy()
-        # Key comes from systemd env; fall back to env if already set
+        
+        # su/xinit strips systemd environment variables, so we manually parse the service file if needed
+        if "SENTINEL_ED25519_KEY" not in env:
+            try:
+                with open("/etc/systemd/system/sentinel.service", "r") as f:
+                    for line in f:
+                        if "SENTINEL_ED25519_KEY=" in line:
+                            env["SENTINEL_ED25519_KEY"] = line.split("SENTINEL_ED25519_KEY=")[1].split('"')[0].strip()
+                            break
+            except Exception as e:
+                self._log(f"Warning: could not read service file: {e}")
+
         if "SENTINEL_ED25519_KEY" not in env:
             self._log("❌ SENTINEL_ED25519_KEY not in environment — check sentinel.service")
             return
+            
         try:
             result = subprocess.run(
                 [sys.executable, script],
