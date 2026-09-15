@@ -164,6 +164,9 @@ void processC2Message(String msg) {
             
             if (sig_b64 && !payload.isNull()) {
                 // Build canonical JSON (sorted keys, must match Python sort_keys=True)
+                // Use serializeJson which preserves insertion order from ArduinoJson's
+                // deserialization — but Python's _canonical_json uses sort_keys=True.
+                // We must rebuild the payload with keys in sorted order.
                 String payload_str = "{";
                 const char* sorted_keys[] = {
                     "algorithm", "controller_id", "decision", "event_hash",
@@ -178,7 +181,47 @@ void processC2Message(String msg) {
                     payload_str += "\"";
                     payload_str += sorted_keys[k];
                     payload_str += "\":";
-                    if (payload[sorted_keys[k]].is<const char*>()) {
+                    if (payload[sorted_keys[k]].is<JsonObject>()) {
+                        // Nested object: serialize with sorted keys to match Python
+                        JsonObject obj = payload[sorted_keys[k]].as<JsonObject>();
+                        // Collect and sort keys
+                        String objKeys[16];
+                        int numKeys = 0;
+                        for (JsonPair kv : obj) {
+                            if (numKeys < 16) objKeys[numKeys++] = kv.key().c_str();
+                        }
+                        // Simple insertion sort for keys
+                        for (int i = 1; i < numKeys; i++) {
+                            String tmp = objKeys[i];
+                            int j = i - 1;
+                            while (j >= 0 && objKeys[j] > tmp) {
+                                objKeys[j + 1] = objKeys[j];
+                                j--;
+                            }
+                            objKeys[j + 1] = tmp;
+                        }
+                        payload_str += "{";
+                        for (int n = 0; n < numKeys; n++) {
+                            if (n > 0) payload_str += ",";
+                            payload_str += "\"";
+                            payload_str += objKeys[n];
+                            payload_str += "\":";
+                            JsonVariant val = obj[objKeys[n]];
+                            if (val.is<JsonArray>()) {
+                                // Handle arrays (e.g. "peers": [])
+                                String arrStr;
+                                serializeJson(val, arrStr);
+                                payload_str += arrStr;
+                            } else if (val.is<const char*>()) {
+                                payload_str += "\"";
+                                payload_str += val.as<const char*>();
+                                payload_str += "\"";
+                            } else {
+                                payload_str += val.as<String>();
+                            }
+                        }
+                        payload_str += "}";
+                    } else if (payload[sorted_keys[k]].is<const char*>()) {
                         payload_str += "\"";
                         payload_str += payload[sorted_keys[k]].as<const char*>();
                         payload_str += "\"";
