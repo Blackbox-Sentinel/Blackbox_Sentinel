@@ -35,14 +35,34 @@ except Exception:
     pass
 
 try:
-    from common.receipt.containment_receipt import ContainmentReceiptService
-    svc = ContainmentReceiptService()
-    receipt = svc.generate(
+    sys.path.insert(0, '/home/sentinel/Blackbox_Sentinel/m3-ml-ledger/src')
+    from m3_security_contracts import ContainmentReceiptService, Ed25519ReceiptSigner, SoftwareMonotonicCounter, EvidenceDecision
+    from ledger import HashChainLedger
+    import base64
+
+    priv_key_b64 = os.environ.get("SENTINEL_ED25519_KEY")
+    if priv_key_b64:
+        signer = Ed25519ReceiptSigner.from_private_bytes(base64.urlsafe_b64decode(priv_key_b64))
+    else:
+        signer = Ed25519ReceiptSigner()
+        
+    counter = SoftwareMonotonicCounter("/tmp/test_counter.txt")
+    ledger = HashChainLedger("/tmp/test_ledger.json")
+    svc = ContainmentReceiptService(ledger, counter, signer, "Pi4-HW-Test")
+    
+    decision = EvidenceDecision(
         incident_id="TEST-RELAY-001",
-        decision="CONTAIN",
-        event_hash="deadbeef" * 8,
-        anomaly_score=-0.999,
-        controller_id="Pi4-HW-Test"
+        approved=True,
+        reason="Manual test trigger",
+        accepted_signals=(),
+        evidence_digest="00" * 32
+    )
+
+    receipt = svc.issue(
+        decision=decision,
+        organization_id="sentinel",
+        key_epoch=1,
+        quorum={"state": "APPROVED", "peers": []}
     )
     print(f"   ✅ Receipt generated (sig={receipt.get('signature', '')[:16]}...)")
 except Exception as e:
@@ -59,9 +79,9 @@ except Exception as e:
             "incident_id": "TEST-001",
             "key_epoch": 1,
             "organization_id": "sentinel",
-            "quorum": 1,
+            "quorum": {"state": "APPROVED", "peers": []},
             "receipt_sequence": 1,
-            "receipt_version": "1.0",
+            "receipt_version": 1,
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         }
     }
