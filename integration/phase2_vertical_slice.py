@@ -154,7 +154,7 @@ class Phase2VerticalSlice:
             authenticated=True,
             fresh=True,
             confidence=0.98,
-            details={"score": -0.115},
+            details={"score": -0.115, "transport": "M2EvidenceTransport"},
         )
         signal_b = EvidenceSignal(
             signal_id="signal-adaptive-001",
@@ -164,7 +164,7 @@ class Phase2VerticalSlice:
             authenticated=True,
             fresh=True,
             confidence=0.91,
-            details={"score": -0.115},
+            details={"score": -0.115, "transport": "M2EvidenceTransport"},
         )
         self.alert_count = 1
         self.emit(
