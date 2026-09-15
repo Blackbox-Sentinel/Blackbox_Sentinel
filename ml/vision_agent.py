@@ -1,99 +1,157 @@
+"""
+BlackBox Sentinel — Self-Healing Vision Agent (Ollama-powered)
+
+Captures the Pi's framebuffer or display screenshot and uses a local
+Vision Language Model (moondream via Ollama) to detect UI crashes,
+black screens, error dialogs, or improperly scaled interfaces.
+
+Runs entirely offline on the Raspberry Pi — no cloud API calls.
+"""
 import logging
 import os
-
-try:
-    from PIL import Image
-    # If the user has a webcam later, they can use OpenCV (cv2)
-    # import cv2 
-except ImportError:
-    pass
+import subprocess
+import json
 
 logger = logging.getLogger(__name__)
 
+
 class VisionAnalyzer:
     def __init__(self):
-        self.model_loaded = False
-        self.model = None
-        self.tokenizer = None
-        
-        # We wrap in a try-except so the backend doesn't crash if the heavy dependencies aren't installed yet
+        self.ollama_available = False
+        self.model_name = "moondream"  # Tiny 1.7B VLM optimised for edge
+
         try:
-            import torch
-            from transformers import AutoModelForCausalLM, AutoTokenizer
-            logger.info("Initializing Offline Vision Model (Moondream2)...")
-            
-            # Using moondream2 - small, efficient VLM perfectly suited for edge devices
-            model_id = "vikhyatk/moondream2"
-            
-            # For 8GB RAM Raspberry Pi, running on CPU might be slow but it works.
-            # Using revision="2024-05-08" as recommended for stability
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_id, trust_remote_code=True, revision="2024-05-08"
-            )
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                model_id, revision="2024-05-08"
-            )
-            self.model.eval()
-            self.model_loaded = True
-            logger.info("Vision Model loaded successfully.")
-        except Exception as e:
-            logger.warning(f"Vision Model dependencies missing or failed to load: {e}")
-            logger.warning("Running in simulation/mock mode until dependencies are installed.")
+            import ollama as _ollama
+            self.ollama = _ollama
+            # Quick connectivity check — don't pull yet, just verify the server
+            try:
+                self.ollama.list()
+                self.ollama_available = True
+                logger.info(f"[VISION] Ollama server detected. Using model: {self.model_name}")
+            except Exception:
+                logger.warning("[VISION] Ollama server not reachable. Vision AI will run in mock mode.")
+        except ImportError:
+            logger.warning("[VISION] ollama package not installed. Vision AI will run in mock mode.")
+            self.ollama = None
+
+    def _capture_screenshot(self) -> str | None:
+        """Capture the screen via framebuffer or scrot, return path or None."""
+        screenshot_path = "/tmp/sentinel_vision_capture.png"
+
+        # Remove stale capture
+        if os.path.exists(screenshot_path):
+            os.remove(screenshot_path)
+
+        # 1. Try bare-metal framebuffer (/dev/fb0) via ffmpeg
+        ret = os.system(
+            f"sudo ffmpeg -y -f fbdev -i /dev/fb0 -frames:v 1 {screenshot_path} 2>/dev/null"
+        )
+
+        # 2. Fallback to X11 scrot
+        if ret != 0 or not os.path.exists(screenshot_path):
+            os.system(f"DISPLAY=:0 scrot -z {screenshot_path} 2>/dev/null")
+
+        # 3. Fallback to libcamera-still (RPi Camera)
+        if not os.path.exists(screenshot_path):
+            os.system(f"libcamera-still -o {screenshot_path} --timeout 1000 2>/dev/null")
+
+        return screenshot_path if os.path.exists(screenshot_path) else None
 
     def analyze_image(self, image_path: str = None) -> dict:
         """
-        Takes a screenshot and asks the VLM if the GUI has crashed or is showing a black screen.
-        In headless mode (no DISPLAY), skips screen capture and returns no-display status.
+        Capture a screenshot and ask the VLM if the GUI is healthy.
+        Returns dict with 'status', 'analysis', 'anomaly_detected'.
         """
-        screenshot_path = "/tmp/self_healing_screenshot.png"
-
-        # Headless mode: no display attached, skip all screen capture
-        if not os.environ.get("DISPLAY"):
+        # Headless mode: no display and no explicit image path
+        if not os.environ.get("DISPLAY") and not image_path:
             return {
                 "status": "headless",
                 "analysis": "Running headless — no display attached. UI accessible via browser at port 5000.",
-                "anomaly_detected": False
+                "anomaly_detected": False,
             }
 
-        # 1. Try bare-metal framebuffer (/dev/fb0) via ffmpeg
-        res = os.system("sudo ffmpeg -y -f fbdev -i /dev/fb0 -frames:v 1 " + screenshot_path + " 2>/dev/null")
+        # Capture or use provided path
+        img_path = image_path or self._capture_screenshot()
 
-        # 2. Fallback to X11 scrot
-        if res != 0 or not os.path.exists(screenshot_path):
-            os.system("DISPLAY=:0 scrot -z " + screenshot_path)
-
-        if not os.path.exists(screenshot_path):
+        if not img_path or not os.path.exists(img_path):
             return {
                 "status": "error",
                 "analysis": "Could not capture framebuffer or screenshot.",
-                "anomaly_detected": False
+                "anomaly_detected": False,
             }
 
-        if not self.model_loaded:
-            return {
-                "status": "simulated",
-                "analysis": "Model not loaded. Simulated scan: Dashboard looks healthy, no black screens detected.",
-                "anomaly_detected": False
-            }
+        # If Ollama isn't available, do a basic file-size heuristic
+        if not self.ollama_available:
+            return self._heuristic_check(img_path)
 
+        # Real VLM analysis via Ollama
         try:
-            image = Image.open(screenshot_path)
-            enc_image = self.model.encode_image(image)
-            prompt = "Analyze this dashboard screenshot. Is it a blank black screen, does it show error messages indicating a crash, or is the UI tiny and improperly scaled in the corner?"
-            answer = self.model.answer_question(enc_image, prompt, self.tokenizer)
-            
-            # Detect if the VLM thinks the screen is blank, black, crashed, or scaled improperly
-            is_anomaly = any(word in answer.lower() for word in ["blank", "black", "crash", "error", "terminal", "console", "tiny", "small", "scale", "improper"])
-            
+            prompt = (
+                "You are a system health monitor. Analyze this screenshot of a security dashboard. "
+                "Answer with a JSON object: {\"healthy\": true/false, \"issue\": \"description\"}. "
+                "Set healthy=false if you see: a black/blank screen, an error message, a crash dialog, "
+                "a terminal with a traceback, the UI scaled incorrectly, or the browser showing a connection error. "
+                "Set healthy=true if the dashboard looks normal and functional."
+            )
+
+            response = self.ollama.chat(
+                model=self.model_name,
+                messages=[{
+                    "role": "user",
+                    "content": prompt,
+                    "images": [img_path],
+                }],
+            )
+
+            answer = response["message"]["content"].strip()
+            logger.info(f"[VISION] VLM response: {answer}")
+
+            # Parse the VLM's response
+            is_anomaly = False
+            anomaly_keywords = [
+                "black", "blank", "crash", "error", "traceback", "exception",
+                "frozen", "unresponsive", "scaled", "tiny", "connection refused",
+                "not found", "502", "503", "404",
+            ]
+            answer_lower = answer.lower()
+
+            # Try JSON parse first
+            try:
+                parsed = json.loads(answer)
+                is_anomaly = not parsed.get("healthy", True)
+            except (json.JSONDecodeError, TypeError):
+                # Fallback: keyword scan
+                is_anomaly = any(kw in answer_lower for kw in anomaly_keywords)
+
             return {
                 "status": "success",
                 "analysis": answer,
-                "anomaly_detected": is_anomaly
+                "anomaly_detected": is_anomaly,
             }
+
         except Exception as e:
-            logger.error(f"Vision analysis failed: {e}")
+            logger.error(f"[VISION] Ollama inference failed: {e}")
+            return self._heuristic_check(img_path)
+
+    def _heuristic_check(self, img_path: str) -> dict:
+        """Fallback: check if the screenshot is suspiciously small or all-black."""
+        try:
+            size = os.path.getsize(img_path)
+            # A blank/black PNG is typically very small (<1KB)
+            if size < 1024:
+                return {
+                    "status": "heuristic",
+                    "analysis": f"Screenshot is only {size} bytes — likely a blank/black screen.",
+                    "anomaly_detected": True,
+                }
+            return {
+                "status": "heuristic",
+                "analysis": f"Screenshot captured ({size} bytes). No VLM available for deep analysis.",
+                "anomaly_detected": False,
+            }
+        except Exception:
             return {
                 "status": "error",
-                "analysis": str(e),
-                "anomaly_detected": False
+                "analysis": "Failed to read screenshot file.",
+                "anomaly_detected": False,
             }

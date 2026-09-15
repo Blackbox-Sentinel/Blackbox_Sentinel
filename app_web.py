@@ -369,42 +369,97 @@ def vision_analyze():
     return jsonify(result)
 
 def autonomous_self_healing_loop():
-    """Background thread that runs the Framebuffer Vision AI and remediates automatically (Claim #1 & #2)."""
-    logger.info("Autonomous Self-Healing Loop Started.")
+    """Background thread: Autonomous AI Self-Healing Orchestrator.
+    
+    Every 60 seconds:
+    1. Captures framebuffer screenshot → Vision LLM (moondream) analyzes it
+    2. If anomaly detected → gathers full system context (logs, thermal, memory)
+    3. Remediation LLM (qwen2.5:1.5b) generates a targeted fix command
+    4. Command is validated against a security allowlist
+    5. Action is cryptographically signed to the Ed25519 ledger
+    6. Fix is executed with 3-strike rollback protection
+    """
+    logger.info("[SELF-HEAL] Autonomous Self-Healing Loop Started.")
+    core.append_log("🧠 [AI] Self-Healing Orchestrator initialized — scanning every 60s")
+    
+    # Wait for the system to stabilize before first scan
+    time.sleep(30)
+    
+    consecutive_healthy = 0
+    
     while True:
-        time.sleep(60) # Scan every 60 seconds
-        
-        # 1. Vision LLM Framebuffer Scan (Claim #1)
-        result = vision_agent.analyze_image()
-        
-        if result.get("anomaly_detected"):
-            logger.critical(f"[AUTONOMOUS ALERT] UI Crash detected by VLM: {result.get('analysis')}")
-            core.append_log(f"dY\" [AI-VISION] Detected anomaly: {result.get('analysis')}")
+        try:
+            # 1. Vision LLM Framebuffer Scan
+            result = vision_agent.analyze_image()
+            status = result.get("status", "unknown")
+            analysis = result.get("analysis", "No analysis")
             
-            # 2. Extract logs for context
-            try:
-                logs_out = subprocess.check_output("journalctl -n 50 --no-pager", shell=True, text=True)
-            except:
-                logs_out = "Failed to fetch logs."
+            if result.get("anomaly_detected"):
+                consecutive_healthy = 0
+                logger.critical(f"[SELF-HEAL] UI anomaly detected: {analysis}")
+                core.append_log(f"🔍 [AI-VISION] Anomaly detected: {analysis[:80]}...")
                 
-            # 3. Text LLM Generates Patch
-            patch_cmd = remediation_agent.generate_patch_command(logs_out)
-            
-            # 4. Cryptographic Ledger Signing (Claim #2)
-            # The AI's decision is cryptographically signed using the physical Ed25519 hardware key
-            signature = core.signer.sign(patch_cmd.encode('utf-8'))
-            
-            # Log the receipt to the HashChainLedger
-            sig_hex = signature.hex()[:16] + "..."
-            core.append_log(f"dY\" [AI-LEDGER] Ed25519 Signed Patch: {patch_cmd} (Sig: {sig_hex})")
-            logger.info(f"AI Patch Signed: {patch_cmd} -> {sig_hex}")
-            
-            # 5. Execute with 3-strike rollback
-            success = remediation_agent.execute_with_rollback(patch_cmd)
-            if success:
-                core.append_log(f"-? [AI-REMEDIATION] Patch executed successfully.")
+                # 2. Gather full system diagnostics
+                system_context = remediation_agent.gather_system_context()
+                context_str = "\n".join([
+                    f"Journal Logs:\n{system_context.get('journal', 'N/A')[:500]}",
+                    f"\nFailed Services:\n{system_context.get('failed_services', 'None')}",
+                    f"\nTemperature: {system_context.get('temperature', 'N/A')}",
+                    f"\nMemory:\n{system_context.get('memory', 'N/A')}",
+                    f"\nDisk: {system_context.get('disk', 'N/A')}",
+                ])
+                
+                core.append_log(f"📊 [AI-DIAG] System temp: {system_context.get('temperature', '?')}, "
+                              f"Failed services: {system_context.get('failed_services', 'none')[:60]}")
+                
+                # 3. Generate AI fix command
+                patch_cmd = remediation_agent.generate_patch_command(
+                    error_context=context_str,
+                    vision_analysis=analysis
+                )
+                
+                core.append_log(f"🔧 [AI-FIX] Generated command: {patch_cmd}")
+                
+                # 4. Cryptographic Ledger Signing
+                try:
+                    sig_payload = {
+                        "action": "self_heal",
+                        "command": patch_cmd,
+                        "vision_status": status,
+                        "analysis_summary": analysis[:200],
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                    signature = core.signer.sign(sig_payload)
+                    sig_short = signature[:16] + "..."
+                    
+                    core.ledger.add_entry("ai_self_healing", {
+                        "command": patch_cmd,
+                        "vision_analysis": analysis[:200],
+                        "system_temp": system_context.get("temperature", "N/A"),
+                        "signature": signature,
+                        "controller_id": core.node_id,
+                    })
+                    core.append_log(f"🔐 [AI-LEDGER] Action signed: {sig_short}")
+                except Exception as e:
+                    logger.error(f"[SELF-HEAL] Ledger signing failed: {e}")
+                
+                # 5. Execute with rollback protection
+                success = remediation_agent.execute_with_rollback(patch_cmd)
+                if success:
+                    core.append_log(f"✅ [AI-HEAL] Fix applied successfully: {patch_cmd}")
+                else:
+                    core.append_log(f"⚠️ [AI-HEAL] Fix failed (strike {remediation_agent.strike_count}/3)")
+                    
             else:
-                core.append_log(f"dY\" [AI-REMEDIATION] Patch failed.")
+                consecutive_healthy += 1
+                # Log periodic health confirmation (every 10 scans = ~10 minutes)
+                if consecutive_healthy % 10 == 0:
+                    core.append_log(f"✅ [AI-VISION] System healthy — {consecutive_healthy} consecutive clean scans")
+                    
+        except Exception as e:
+            logger.error(f"[SELF-HEAL] Loop error: {e}")
+            
+        time.sleep(60)
 
 if __name__ == "__main__":
     # Start the autonomous background orchestrator loop
