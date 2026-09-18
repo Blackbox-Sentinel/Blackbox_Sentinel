@@ -40,7 +40,7 @@ sys.path.insert(0, os.path.join(PROJECT_ROOT, "m4-gui-venture", "src"))
 os.environ["SENTINEL_HARDWARE"] = "hw"
 
 from hal import get_hal
-from predict import AnomalyScorer
+from predict import AnomalyScorer, DeviceState
 from ledger import HashChainLedger
 from traffic_generator import TrafficGenerator
 from pin_security import validate_pin
@@ -105,6 +105,24 @@ class SentinelCore:
         if success:
             self.hal.relay.set_receipt(receipt)  # give ESP32 the signed receipt to verify
             self.hal.relay.isolate()
+            
+            # Direct GPIO Fallback for relay (Pins 32,33 -> BCM 12,13)
+            try:
+                import RPi.GPIO as GPIO
+                import time
+                GPIO.setwarnings(False)
+                GPIO.setmode(GPIO.BCM)
+                GPIO.setup(12, GPIO.OUT)
+                GPIO.setup(13, GPIO.OUT)
+                GPIO.output(12, GPIO.HIGH)
+                GPIO.output(13, GPIO.HIGH)
+                time.sleep(0.5)
+                GPIO.output(12, GPIO.LOW)
+                GPIO.output(13, GPIO.LOW)
+                self.append_log("⚡ [RELAY] Raw GPIO 12/13 pulsed for direct isolation")
+            except Exception as e:
+                self.append_log(f"⚠️ [GPIO ERROR] {e}")
+
             self.hal.led.blink(0.2)
             self.scorer.trigger_lockdown()
             self.append_log(f"🚨 [ANOMALY DETECTED] {pkt_label} (Score: {score:.4f})")
@@ -298,6 +316,24 @@ def tamper():
 def hardware_check():
     core.append_log("TEST: Manual Hardware Check Triggered")
     core.hal.relay.isolate()
+    
+    # Direct GPIO Fallback for manual check
+    try:
+        import RPi.GPIO as GPIO
+        import time
+        GPIO.setwarnings(False)
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(12, GPIO.OUT)
+        GPIO.setup(13, GPIO.OUT)
+        GPIO.output(12, GPIO.HIGH)
+        GPIO.output(13, GPIO.HIGH)
+        time.sleep(0.5)
+        GPIO.output(12, GPIO.LOW)
+        GPIO.output(13, GPIO.LOW)
+        core.append_log("⚡ [RELAY] Manual check used raw GPIO 12/13")
+    except Exception as e:
+        core.append_log(f"⚠️ [GPIO ERROR] {e}")
+
     core.hal.led.blink(0.5)
     return jsonify({"status": "ok", "message": "Hardware check executed"})
 
